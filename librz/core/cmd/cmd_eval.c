@@ -112,13 +112,15 @@ static bool dict2keylist(void *user, const void *key, const ut64 value) {
 
 RZ_API RZ_OWN RzList *rz_core_theme_list(RzCore *core) {
 	HtPU *themes = ht_pu_new0();
+
 	char *path = rz_path_home_prefix(RZ_THEMES);
 	if (path) {
 		list_themes_in_path(themes, path);
 		RZ_FREE(path);
 	}
 
-	path = rz_path_system(RZ_THEMES);
+	const char *dir_prefix = rz_config_get(core->config, "dir.prefix");
+	path = rz_file_path_join(dir_prefix, RZ_THEMES);
 	if (path) {
 		list_themes_in_path(themes, path);
 		RZ_FREE(path);
