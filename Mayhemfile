@@ -1,0 +1,5 @@
+project: rnshah9/rizin
+target: rizin
+
+cmds:
+  - cmd: /usr/bin/rizin
