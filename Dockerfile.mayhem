@@ -80,7 +80,6 @@ ENV RZ_ARM64_AS=${with_arm64_as:+aarch64-linux-gnu-as}
 ENV RZ_ARM32_AS=${with_arm32_as:+arm-linux-gnueabi-as}
 ENV RZ_PPC_AS=${with_ppc_as:+powerpc64le-linux-gnu-as}
 
-RUN useradd -m rizin
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git python3
 
 WORKDIR /home/rizin
