@@ -156,7 +156,11 @@ static RzList *maps(RzBinFile *bf) {
 	}
 	map->name = strdup("header");
 	map->paddr = 0;
-	map->psize = RZ_MIN(bin->size, RZ_ROUND(bin->nt_headers->optional_header.SizeOfHeaders, bin->nt_headers->optional_header.FileAlignment));
+	ut32 aligned_hdr_size = UT32_MAX;
+	if (bin->nt_headers->optional_header.FileAlignment != 0) {
+		aligned_hdr_size = RZ_ROUND(bin->nt_headers->optional_header.SizeOfHeaders, bin->nt_headers->optional_header.FileAlignment);
+	}
+	map->psize = RZ_MIN(bin->size, aligned_hdr_size);
 	map->vaddr = ba;
 	map->vsize = RZ_ROUND(map->psize, 4096);
 	map->perm = RZ_PERM_R;
@@ -379,6 +383,14 @@ static RzList *symbols(RzBinFile *bf) {
 		}
 		free(imports);
 	}
+
+	// CLR symbols
+	RzList *clr_symbols = PE_(rz_bin_pe_get_clr_symbols)(bf->o->bin_obj);
+	if (clr_symbols) {
+		rz_list_join(ret, clr_symbols);
+		free(clr_symbols);
+	}
+
 	find_pe_overlay(bf);
 	return ret;
 }
@@ -716,4 +728,26 @@ static RzList *compute_hashes(RzBinFile *bf) {
 
 static RzList *strings(RzBinFile *bf) {
 	return rz_bin_file_strings(bf, 4, false);
+}
+
+/**
+ * Currently only used by CIL plugin to resolve `call` and `jmp` targets
+ * \returns offset on success, UT64_MAX on fail
+ */
+static ut64 get_offset(RzBinFile *bf, int type, int idx) {
+	struct PE_(rz_bin_pe_obj_t) * bin;
+	Pe_image_clr *clr;
+
+	if (!bf || !bf->o ||
+		!(bin = bf->o->bin_obj) ||
+		!(clr = bin->clr)) {
+		return UT64_MAX;
+	}
+
+	if (type == 'd') { // MethodDef index
+		Pe_image_metadata_methoddef *methoddef = rz_pvector_at(clr->methoddefs, idx - 1);
+		return PE_(rz_bin_pe_get_clr_methoddef_offset)(bin, methoddef);
+	}
+
+	return UT64_MAX;
 }

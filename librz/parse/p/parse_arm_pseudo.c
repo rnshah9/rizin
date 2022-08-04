@@ -253,7 +253,9 @@ static char *mount_oldstr(RzParse *p, const char *reg, st64 delta, bool ucase) {
 	return oldstr;
 }
 
-static bool subvar(RzParse *p, RzAnalysisFunction *f, ut64 addr, int oplen, char *data, char *str, int len) {
+static bool subvar(RzParse *p, RzAnalysisFunction *f, RzAnalysisOp *op, char *data, char *str, int len) {
+	const ut64 addr = op->addr;
+	const int oplen = op->size;
 	RzList *spargs = NULL;
 	RzList *bpargs = NULL;
 	RzListIter *iter;
@@ -288,16 +290,20 @@ static bool subvar(RzParse *p, RzAnalysisFunction *f, ut64 addr, int oplen, char
 			if (!ripend) {
 				ripend = "]";
 			}
-			if (neg) {
-				repl_num -= rz_num_get(NULL, neg + 1);
-			} else {
-				repl_num += rz_num_get(NULL, rip);
+			const char *maybe_num = neg ? neg + 1 : rip;
+			maybe_num = rz_str_trim_head_ro(maybe_num);
+			if (rz_is_valid_input_num_value(NULL, maybe_num)) {
+				if (neg) {
+					repl_num -= rz_num_get(NULL, maybe_num);
+				} else {
+					repl_num += rz_num_get(NULL, maybe_num);
+				}
+				rip -= 3;
+				*rip = 0;
+				tstr_new = rz_str_newf("%s0x%08" PFMT64x "%s", tstr, repl_num, ripend);
+				free(tstr);
+				tstr = tstr_new;
 			}
-			rip -= 3;
-			*rip = 0;
-			tstr_new = rz_str_newf("%s0x%08" PFMT64x "%s", tstr, repl_num, ripend);
-			free(tstr);
-			tstr = tstr_new;
 		}
 	}
 

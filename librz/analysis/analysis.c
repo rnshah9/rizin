@@ -10,9 +10,7 @@
 
 RZ_LIB_VERSION(rz_analysis);
 
-static RzAnalysisPlugin *analysis_static_plugins[] = {
-	RZ_ANALYSIS_STATIC_PLUGINS
-};
+static RzAnalysisPlugin *analysis_static_plugins[] = { RZ_ANALYSIS_STATIC_PLUGINS };
 
 RZ_API void rz_analysis_set_limits(RzAnalysis *analysis, ut64 from, ut64 to) {
 	free(analysis->limit);
@@ -94,17 +92,15 @@ RZ_API RzAnalysis *rz_analysis_new(void) {
 	analysis->type_links = ht_up_new0();
 	analysis->sdb_fmts = sdb_ns(analysis->sdb, "spec", 1);
 	analysis->sdb_cc = sdb_ns(analysis->sdb, "cc", 1);
-	analysis->sdb_zigns = sdb_ns(analysis->sdb, "zigns", 1);
 	analysis->sdb_classes = sdb_ns(analysis->sdb, "classes", 1);
 	analysis->sdb_classes_attrs = sdb_ns(analysis->sdb_classes, "attrs", 1);
 	analysis->sdb_noret = sdb_ns(analysis->sdb, "noreturn", 1);
-	analysis->zign_path = strdup("");
 	(void)rz_analysis_xrefs_init(analysis);
 	analysis->diff_thbb = RZ_ANALYSIS_THRESHOLDBB;
 	analysis->diff_thfcn = RZ_ANALYSIS_THRESHOLDFCN;
 	analysis->syscall = rz_syscall_new();
-	analysis->arch_target = rz_arch_target_new();
-	analysis->platform_target = rz_arch_platform_target_new();
+	analysis->arch_target = rz_platform_target_new();
+	analysis->platform_target = rz_platform_target_index_new();
 	rz_io_bind_init(analysis->iob);
 	rz_flag_bind_init(analysis->flb);
 	analysis->reg = rz_reg_new();
@@ -117,13 +113,14 @@ RZ_API RzAnalysis *rz_analysis_new(void) {
 	rz_analysis_set_bits(analysis, 32);
 	analysis->plugins = rz_list_newf(NULL);
 	if (analysis->plugins) {
-		for (i = 0; analysis_static_plugins[i]; i++) {
+		for (i = 0; i < RZ_ARRAY_SIZE(analysis_static_plugins); i++) {
 			rz_analysis_add(analysis, analysis_static_plugins[i]);
 		}
 	}
 	analysis->ht_global_var = ht_pp_new(NULL, global_kv_free, NULL);
 	analysis->global_var_tree = NULL;
 	analysis->il_vm = NULL;
+	analysis->hash = rz_hash_new();
 	return analysis;
 }
 
@@ -144,6 +141,7 @@ RZ_API RzAnalysis *rz_analysis_free(RzAnalysis *a) {
 
 	plugin_fini(a);
 
+	rz_hash_free(a->hash);
 	rz_analysis_il_vm_cleanup(a);
 	rz_list_free(a->fcns);
 	ht_up_free(a->ht_addr_fun);
@@ -153,14 +151,12 @@ RZ_API RzAnalysis *rz_analysis_free(RzAnalysis *a) {
 	rz_interval_tree_fini(&a->meta);
 	free(a->cpu);
 	free(a->os);
-	free(a->zign_path);
 	rz_list_free(a->plugins);
 	rz_rbtree_free(a->bb_tree, __block_free_rb, NULL);
 	rz_spaces_fini(&a->meta_spaces);
-	rz_spaces_fini(&a->zign_spaces);
 	rz_syscall_free(a->syscall);
-	rz_arch_target_free(a->arch_target);
-	rz_arch_platform_target_free(a->platform_target);
+	rz_platform_target_free(a->arch_target);
+	rz_platform_target_index_free(a->platform_target);
 	rz_reg_free(a->reg);
 	ht_up_free(a->ht_xrefs_from);
 	ht_up_free(a->ht_xrefs_to);
@@ -190,6 +186,9 @@ RZ_API bool rz_analysis_use(RzAnalysis *analysis, const char *name) {
 	RzAnalysisPlugin *h;
 
 	if (analysis) {
+		if (analysis->cur && !strcmp(analysis->cur->name, name)) {
+			return true;
+		}
 		rz_list_foreach (analysis->plugins, it, h) {
 			if (!h || !h->name || strcmp(h->name, name)) {
 				continue;
@@ -390,7 +389,7 @@ RZ_API void rz_analysis_trace_bb(RzAnalysis *analysis, ut64 addr) {
 	}
 }
 
-RZ_API RzList *rz_analysis_get_fcns(RzAnalysis *analysis) {
+RZ_API RzList /*<RzAnalysisFunction *>*/ *rz_analysis_get_fcns(RzAnalysis *analysis) {
 	// avoid received to free this thing
 	analysis->fcns->free = NULL;
 	return analysis->fcns;
@@ -438,7 +437,6 @@ RZ_API void rz_analysis_purge(RzAnalysis *analysis) {
 	rz_type_db_purge(analysis->typedb);
 	ht_up_free(analysis->type_links);
 	analysis->type_links = ht_up_new0();
-	sdb_reset(analysis->sdb_zigns);
 	sdb_reset(analysis->sdb_classes);
 	sdb_reset(analysis->sdb_classes_attrs);
 	sdb_reset(analysis->sdb_cc);
@@ -622,7 +620,7 @@ RZ_API bool rz_analysis_noreturn_at(RzAnalysis *analysis, ut64 addr) {
 	return false;
 }
 
-RZ_API RzList *rz_analysis_noreturn_functions(RzAnalysis *analysis) {
+RZ_API RzList /*<char *>*/ *rz_analysis_noreturn_functions(RzAnalysis *analysis) {
 	rz_return_val_if_fail(analysis, NULL);
 	// At first we read all noreturn functions from the Types DB
 	RzList *noretl = rz_type_noreturn_function_names(analysis->typedb);
@@ -668,7 +666,7 @@ RZ_API void rz_analysis_bind(RzAnalysis *analysis, RzAnalysisBind *b) {
 	}
 }
 
-RZ_API RzList *rz_analysis_preludes(RzAnalysis *analysis) {
+RZ_API RzList /*<RzSearchKeyword *>*/ *rz_analysis_preludes(RzAnalysis *analysis) {
 	if (analysis->cur && analysis->cur->preludes) {
 		return analysis->cur->preludes(analysis);
 	}

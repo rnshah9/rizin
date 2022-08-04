@@ -897,7 +897,7 @@ static const char *rizin_argv[] = {
 	"aar?", "aar", "aar*", "aarj", "aas", "aat", "aaT", "aau", "aav",
 	"a8", "ab",
 	"acl", "acll", "aclj", "acl*", "ac?", "ac", "ac-", "acn", "acv", "acvf", "acv-", "acb", "acb-", "acm", "acm-", "acmn",
-	"aC?", "aC", "ad", "ad4", "ad8", "adf", "adfg", "adt", "adk",
+	"aC?", "ad", "ad4", "ad8", "adf", "adfg", "adt", "adk",
 	"ae?", "ae??", "ae", "aea", "aeA", "aeaf", "aeAf", "aeC", "aec?", "aec", "aecb", "aecs", "aecc", "aecu", "aecue",
 	"aef", "aefa",
 	"aei", "aeim", "aeip", "aek", "aek-", "aeli", "aelir", "aep?", "aep", "aep-", "aepc",
@@ -992,8 +992,8 @@ static const char *rizin_argv[] = {
 	"pF?", "pF", "pFa", "pFaq", "pFo", "pFp", "pFx",
 	"pg?", "pg", "pg*", "pg-*",
 	"ph?", "ph", "ph=",
-	"pi?", "pi", "pia", "pib", "pid", "pie", "pif?", "pif", "pifc", "pifcj", "pifj", "pij", "pir",
-	"pI?", "pI", "pIa", "pIb", "pId", "pIe", "pIf?", "pIf", "pIfc", "pIfcj", "pIfj", "pIj", "pIr",
+	"pi?", "pi", "pia", "pib", "pie", "pif?", "pif", "pifc", "pifcj", "pifj", "pir",
+	"pI?", "pI", "pIa", "pIb", "pIe", "pIf?", "pIf", "pIfc", "pIfcj", "pIfj", "pIr",
 	"pj?", "pj", "pj.", "pj..",
 	"pk?", "pk", "pK?", "pK",
 	"pm?", "pm",
@@ -1329,24 +1329,6 @@ static void autocomplete_sdb(RzCore *core, RzLineCompletion *completion, const c
 	}
 }
 
-static void autocomplete_zignatures(RzCore *core, RzLineCompletion *completion, const char *msg) {
-	rz_return_if_fail(msg);
-	int length = strlen(msg);
-	RzSpaces *zs = &core->analysis->zign_spaces;
-	RzSpace *s;
-	RzSpaceIter it;
-
-	rz_spaces_foreach(zs, it, s) {
-		if (!strncmp(msg, s->name, length)) {
-			rz_line_completion_push(completion, s->name);
-		}
-	}
-
-	if (strlen(msg) == 0) {
-		rz_line_completion_push(completion, "*");
-	}
-}
-
 static void autocomplete_flagspaces(RzCore *core, RzLineCompletion *completion, const char *msg) {
 	rz_return_if_fail(msg);
 	int length = strlen(msg);
@@ -1515,9 +1497,6 @@ static bool find_autocomplete(RzCore *core, RzLineCompletion *completion, RzLine
 		break;
 	case RZ_CORE_AUTOCMPLT_FCN:
 		autocomplete_functions(core, completion, p);
-		break;
-	case RZ_CORE_AUTOCMPLT_ZIGN:
-		autocomplete_zignatures(core, completion, p);
 		break;
 	case RZ_CORE_AUTOCMPLT_EVAL:
 		autocomplete_evals(core, completion, p);
@@ -1696,15 +1675,6 @@ RZ_API void rz_core_autocomplete(RZ_NULLABLE RzCore *core, RzLineCompletion *com
 			if (!len || !strncmp(buf->data, key, len)) {
 				rz_line_completion_push(completion, key);
 			}
-		}
-	} else if (!strncmp(buf->data, "zo ", 3) || !strncmp(buf->data, "zoz ", 4)) {
-		if (core->analysis->zign_path && core->analysis->zign_path[0]) {
-			char *zignpath = rz_file_abspath(core->analysis->zign_path);
-			char *paths[2] = { zignpath, NULL };
-			autocompleteFilename(completion, buf, paths, 1);
-			free(zignpath);
-		} else {
-			autocompleteFilename(completion, buf, NULL, 1);
 		}
 	} else if (find_e_opts(core, completion, buf)) {
 		return;
@@ -2239,7 +2209,6 @@ static void __init_autocomplete_default(RzCore *core) {
 	__foreach(core, files, RZ_CORE_AUTOCMPLT_FILE);
 
 	rz_core_autocomplete_add(core->autocomplete, "-", RZ_CORE_AUTOCMPLT_MINS, true);
-	rz_core_autocomplete_add(core->autocomplete, "zs", RZ_CORE_AUTOCMPLT_ZIGN, true);
 	rz_core_autocomplete_add(core->autocomplete, "fs", RZ_CORE_AUTOCMPLT_FLSP, true);
 	rz_core_autocomplete_add(
 		rz_core_autocomplete_add(core->autocomplete, "ls", RZ_CORE_AUTOCMPLT_DFLT, true),
@@ -2438,6 +2407,8 @@ RZ_API bool rz_core_init(RzCore *core) {
 	core->print->offname = rz_core_print_offname;
 	core->print->offsize = rz_core_print_offsize;
 	core->print->cb_printf = rz_cons_printf;
+	core->visual_is_inputing = false;
+	core->visual_inputing = NULL;
 #if __WINDOWS__
 	core->print->cb_eprintf = win_eprintf;
 #endif
@@ -2509,7 +2480,6 @@ RZ_API bool rz_core_init(RzCore *core) {
 	core->rasm->num = core->num;
 	core->rasm->core = core;
 	core->analysis = rz_analysis_new();
-	rz_sign_analysis_set_hooks(core->analysis);
 	core->gadgets = rz_list_newf((RzListFree)rz_core_gadget_free);
 	core->analysis->ev = core->ev;
 	core->analysis->read_at = rz_core_analysis_read_at;
@@ -2547,6 +2517,7 @@ RZ_API bool rz_core_init(RzCore *core) {
 	} else {
 		core->asmqjmps = RZ_NEWS(ut64, core->asmqjmps_size);
 	}
+	core->hash = rz_hash_new();
 
 	rz_bin_bind(core->bin, &(core->rasm->binb));
 	rz_bin_bind(core->bin, &(core->analysis->binb));
@@ -2658,6 +2629,7 @@ RZ_API void rz_core_fini(RzCore *c) {
 	rz_core_task_join(&c->tasks, NULL, -1);
 	rz_core_wait(c);
 	//  avoid double free
+	RZ_FREE_CUSTOM(c->hash, rz_hash_free);
 	RZ_FREE_CUSTOM(c->ropchain, rz_list_free);
 	RZ_FREE_CUSTOM(c->ev, rz_event_free);
 	RZ_FREE(c->cmdlog);
@@ -2698,6 +2670,7 @@ RZ_API void rz_core_fini(RzCore *c) {
 	RZ_FREE_CUSTOM(c->lib, rz_lib_free);
 	RZ_FREE_CUSTOM(c->yank_buf, rz_buf_free);
 	RZ_FREE_CUSTOM(c->graph, rz_agraph_free);
+	RZ_FREE(c->visual_inputing);
 	RZ_FREE(c->asmqjmps);
 	RZ_FREE_CUSTOM(c->sdb, sdb_free);
 	RZ_FREE_CUSTOM(c->parser, rz_parse_free);
@@ -2853,8 +2826,6 @@ RZ_API int rz_core_prompt(RzCore *r, int sync) {
 	r->num->value = r->rc;
 	return true;
 }
-
-extern void rz_core_echo(RzCore *core, const char *input);
 
 RZ_API int rz_core_prompt_exec(RzCore *r) {
 	int ret = rz_core_cmd(r, r->cmdqueue, true);

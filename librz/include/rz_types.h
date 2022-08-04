@@ -10,6 +10,9 @@
 #include <stddef.h>
 #include <assert.h>
 #include <errno.h>
+#if HAVE_HEADER_INTTYPES_H
+#include <inttypes.h>
+#endif
 
 // TODO: fix this to make it crosscompile-friendly: RZ_SYS_OSTYPE ?
 /* operating system */
@@ -44,14 +47,25 @@ typedef enum {
 	RZ_OUTPUT_MODE_QUIETEST = 1 << 8,
 } RzOutputMode;
 
-#define RZ_IN        /* do not use, implicit */
-#define RZ_OUT       /* parameter is written, not read */
-#define RZ_INOUT     /* parameter is read and written */
+#define RZ_IN    /* do not use, implicit */
+#define RZ_OUT   /* parameter is written, not read */
+#define RZ_INOUT /* parameter is read and written */
+
+#ifdef RZ_BINDINGS
+#define RZ_OWN    __attribute__((annotate("RZ_OWN")))
+#define RZ_BORROW __attribute__((annotate("RZ_BORROW")))
+
+#define RZ_NONNULL   __attribute__((annotate("RZ_NONNULL")))
+#define RZ_NULLABLE  __attribute__((annotate("RZ_NULLABLE")))
+#define RZ_DEPRECATE __attribute__((annotate("RZ_DEPRECATE")))
+#else
 #define RZ_OWN       /* pointer ownership is transferred */
 #define RZ_BORROW    /* pointer ownership is not transferred, it must not be freed by the receiver */
 #define RZ_NONNULL   /* pointer can not be null */
 #define RZ_NULLABLE  /* pointer can be null */
 #define RZ_DEPRECATE /* should not be used in new code and should/will be removed in the future */
+#endif
+
 #define RZ_IFNULL(x) /* default value for the pointer when null */
 #ifdef __GNUC__
 #define RZ_UNUSED __attribute__((__unused__))
@@ -179,9 +193,8 @@ typedef enum {
 #endif
 
 #include <rz_types_base.h>
+#include <rz_constructor.h>
 
-#undef _FILE_OFFSET_BITS
-#define _FILE_OFFSET_BITS 64
 #undef _GNU_SOURCE
 #define _GNU_SOURCE
 
@@ -243,8 +256,8 @@ typedef int (*PrintfCallback)(const char *str, ...) RZ_PRINTF_CHECK(1, 2);
 #ifdef RZ_API
 #undef RZ_API
 #endif
-#if RZ_SWIG
-#define RZ_API export
+#ifdef RZ_BINDINGS
+#define RZ_API __attribute__((annotate("RZ_API")))
 #elif RZ_INLINE
 #define RZ_API inline
 #else
@@ -260,7 +273,9 @@ typedef int (*PrintfCallback)(const char *str, ...) RZ_PRINTF_CHECK(1, 2);
 #define RZ_LIB_VERSION_HEADER(x) \
 	RZ_API const char *x##_version(void)
 #define RZ_LIB_VERSION(x) \
-	RZ_API const char *x##_version(void) { return "" RZ_VERSION; }
+	RZ_API const char *x##_version(void) { \
+		return "" RZ_VERSION; \
+	}
 
 #define BITS2BYTES(x)    (((x) / 8) + (((x) % 8) ? 1 : 0))
 #define ZERO_FILL(x)     memset(&x, 0, sizeof(x))
@@ -344,7 +359,7 @@ static inline void *rz_new_copy(int size, void *data) {
 #if !(defined(__GNUC__) && __GNUC__ < 5) || defined(__clang__)
 #define rz_offsetof(type, member) offsetof(type, member)
 #else
-#if __SDB_WINDOWS__
+#if __WINDOWS__
 #define rz_offsetof(type, member) ((unsigned long)(ut64) & ((type *)0)->member)
 #else
 #define rz_offsetof(type, member) ((unsigned long)&((type *)0)->member)
@@ -652,7 +667,11 @@ typedef int RzRef;
 
 #define RZ_REF_TYPE RzRef RZ_REF_NAME
 #define RZ_REF_FUNCTIONS(s, n) \
-	static inline void n##_ref(s *x) { x->RZ_REF_NAME++; } \
-	static inline void n##_unref(s *x) { rz_unref(x, n##_free); }
+	static inline void n##_ref(s *x) { \
+		x->RZ_REF_NAME++; \
+	} \
+	static inline void n##_unref(s *x) { \
+		rz_unref(x, n##_free); \
+	}
 
 #endif // RZ_TYPES_H

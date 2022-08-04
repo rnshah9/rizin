@@ -2,6 +2,7 @@ NAME=PDB downloader check
 FILE=bins/pdb/user32.dll
 CMDS=<<EOF
 %RZ_CURL=1
+e pdb.server=https://raw.githubusercontent.com/rizinorg/test-pdb-repository/main/
 !!rz-bin -PP ${RZ_FILE} ~PDB
 EOF
 EXPECT=<<EOF
@@ -13,6 +14,7 @@ NAME=PDB downloader json
 FILE==
 CMDS=<<EOF
 %RZ_CURL=1
+e pdb.server=https://raw.githubusercontent.com/rizinorg/test-pdb-repository/main/
 !rz-bin -PPj bins/pdb/user32.dll~{}>$pdb
 $pdb~file,guid,download
 EOF
@@ -27,6 +29,7 @@ NAME=idpdj
 FILE=bins/pdb/user32.dll
 CMDS=<<EOF
 %RZ_CURL=1
+e pdb.server=https://raw.githubusercontent.com/rizinorg/test-pdb-repository/main/
 idpdj~{}>$pdb
 $pdb~file,guid,download
 EOF
@@ -311,5 +314,24 @@ struct _TP_CALLBACK_ENVIRON_V3 {
 	int32_t CallbackPriority;
 	uint32_t Size;
 };
+EOF
+RUN
+
+NAME=Extract pdb via idbx
+FILE==
+CMDS=<<EOF
+idpi bins/pdb/basic32.pd_
+e log.level=3
+mkdir .tmp
+idpx bins/pdb/basic32.pd_ .tmp
+!rz-hash -a md5 .tmp/basic32.pdb
+EOF
+REGEXP_FILTER_ERR=(ERROR:.+\nINFO:.+\n)
+EXPECT_ERR=<<EOF
+ERROR: The pdb file bins/pdb/basic32.pd_ seems to be compressed, please use idpx command to extract the contents.
+INFO: cab_extract: extracted .tmp/basic32.pdb
+EOF
+EXPECT=<<EOF
+.tmp/basic32.pdb: 0x00000000-0x00649000 md5: a6c609e6b62cd0b9fbea5400bf370891
 EOF
 RUN

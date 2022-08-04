@@ -1,4 +1,4 @@
-io_plugins = [
+io_plugins_list = [
   'ar',
   'fd',
   'bfdbg',
@@ -31,16 +31,22 @@ io_plugins = [
 ]
 
 if get_option('use_gpl')
-  io_plugins += 'qnx'
+  io_plugins_list += 'qnx'
 endif
 
 if host_machine.system() == 'windows'
-  io_plugins += [
+  io_plugins_list+= [
     'windbg',
     'w32dbg',
     'w32',
   ]
 endif
+
+io_plugins = {
+  'conf_name': 'plugins_io',
+  'base_cname': 'rz_io_plugin_',
+  'list': io_plugins_list,
+}
 
 rz_io_sources = [
   'io.c',
@@ -99,13 +105,14 @@ rz_io_deps = [
   dependency('rzwinkd'),
   libzip_dep,
   dependency('rzar'),
-  pth,
+  th,
   lrt,
   rz_util_dep,
   rz_socket_dep,
   rz_hash_dep,
   rz_crypto_dep,
   rz_cons_dep,
+  platform_deps,
 ]
 
 if get_option('use_gpl')
@@ -132,11 +139,9 @@ endif
 rz_io = library('rz_io', rz_io_sources,
   include_directories: platform_inc,
   dependencies: rz_io_deps,
-  c_args: library_cflags,
   install: true,
   implicit_include_directories: false,
   install_rpath: rpath_lib,
-  link_args: library_linkflags,
   soversion: rizin_libversion,
   version: rizin_version,
   name_suffix: lib_name_suffix,

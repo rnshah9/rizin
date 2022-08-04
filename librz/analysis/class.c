@@ -608,7 +608,7 @@ RZ_API void rz_analysis_class_method_fini(RzAnalysisMethod *meth) {
 	free(meth->real_name);
 }
 
-RZ_API void rz_analysis_class_method_recover(RzAnalysis *analysis, RzBinClass *cls, RzList *methods) {
+RZ_API void rz_analysis_class_method_recover(RzAnalysis *analysis, RzBinClass *cls, RzList /*<RzBinSymbol *>*/ *methods) {
 	RzListIter *iter_method;
 	RzBinSymbol *sym;
 	rz_list_sort(methods, &symbol_method_sort_by_addr);
@@ -1258,7 +1258,7 @@ RZ_API RzAnalysisClassErr rz_analysis_class_vtable_delete(RzAnalysis *analysis, 
  * @param analysis
  * @return RzGraph* NULL if failure
  */
-RZ_API RzGraph *rz_analysis_class_get_inheritance_graph(RzAnalysis *analysis) {
+RZ_API RzGraph /*<RzGraphNodeInfo *>*/ *rz_analysis_class_get_inheritance_graph(RzAnalysis *analysis) {
 	rz_return_val_if_fail(analysis, NULL);
 	RzGraph *class_graph = rz_graph_new();
 	if (!class_graph) {

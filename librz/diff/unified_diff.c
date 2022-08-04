@@ -147,8 +147,6 @@ static inline void diff_unified_lines_hl(RzDiff *diff, RzDiffOp *op, RzStrBuf *s
 
 	// Fill char_bounds array
 	ut32 bounds_idx = 0;
-	ut32 count = 0;
-	ut32 count_b = 0;
 	bool newline = false;
 	st32 i = a_beg;
 	st32 j = b_beg;
@@ -162,7 +160,6 @@ static inline void diff_unified_lines_hl(RzDiff *diff, RzDiffOp *op, RzStrBuf *s
 		stringify(elem, &tmp);
 		len = rz_strbuf_length(&tmp);
 		p = rz_strbuf_get(&tmp);
-		count += len;
 		if (len > 0 && p[len - 1] == '\n') {
 			len--;
 			newline = true;
@@ -178,7 +175,6 @@ static inline void diff_unified_lines_hl(RzDiff *diff, RzDiffOp *op, RzStrBuf *s
 			stringify(elem_b, &tmp2);
 			len_b = rz_strbuf_length(&tmp2);
 			p_b = rz_strbuf_get(&tmp2);
-			count_b += len_b;
 			if (len_b > 0 && p_b[len_b - 1] == '\n') {
 				len_b--;
 			}
@@ -186,13 +182,13 @@ static inline void diff_unified_lines_hl(RzDiff *diff, RzDiffOp *op, RzStrBuf *s
 			if (len && len_b && (p[0] == p_b[0] || p[len - 1] == p_b[len_b - 1])) {
 				// Get left bound.
 				st32 left = 0;
-				for (; left < R_MIN(len, len_b) && p[left] == p_b[left]; left++)
+				for (; left < RZ_MIN(len, len_b) && p[left] == p_b[left]; left++)
 					;
 				char_bounds[bounds_idx * 2] = left;
 				// Get right bound (offset). "- left" chops off
 				// the left portion that has already matched.
 				st32 right = 0;
-				for (; right < R_MIN(len, len_b) - left && p[len - 1 - right] == p_b[len_b - 1 - right];
+				for (; right < RZ_MIN(len, len_b) - left && p[len - 1 - right] == p_b[len_b - 1 - right];
 					right++)
 					;
 				char_bounds[bounds_idx * 2 + 1] = right;
@@ -209,7 +205,6 @@ static inline void diff_unified_lines_hl(RzDiff *diff, RzDiffOp *op, RzStrBuf *s
 	char prefix = del_prefix;
 	const char *bcol = DIFF_COLOR(prefix);
 	const char *bbgcol = DIFF_BGCOLOR(prefix);
-	count = 0;
 	newline = false;
 	bounds_idx = 0;
 
@@ -225,7 +220,6 @@ static inline void diff_unified_lines_hl(RzDiff *diff, RzDiffOp *op, RzStrBuf *s
 		stringify(elem, &tmp);
 		len = rz_strbuf_length(&tmp);
 		p = rz_strbuf_get(&tmp);
-		count += len;
 		if (len > 0 && p[len - 1] == '\n') {
 			len--;
 			newline = true;
@@ -249,7 +243,6 @@ static inline void diff_unified_lines_hl(RzDiff *diff, RzDiffOp *op, RzStrBuf *s
 	prefix = ins_prefix;
 	bcol = DIFF_COLOR(prefix);
 	bbgcol = DIFF_BGCOLOR(prefix);
-	count = 0;
 	newline = false;
 	bounds_idx = 0;
 
@@ -265,7 +258,6 @@ static inline void diff_unified_lines_hl(RzDiff *diff, RzDiffOp *op, RzStrBuf *s
 		stringify(elem, &tmp);
 		len = rz_strbuf_length(&tmp);
 		p = rz_strbuf_get(&tmp);
-		count += len;
 		if (len > 0 && p[len - 1] == '\n') {
 			len--;
 			newline = true;

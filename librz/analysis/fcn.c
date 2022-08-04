@@ -12,7 +12,6 @@
 #define SDB_KEY_BB "bb.0x%" PFMT64x ".0x%" PFMT64x
 // XXX must be configurable by the user
 #define JMPTBL_LEA_SEARCH_SZ 64
-#define JMPTBL_MAXFCNSIZE    4096
 #define BB_ALIGN             0x10
 #define MAX_SCAN_SIZE        0x7ffffff
 
@@ -164,7 +163,7 @@ static bool isSymbolNextInstruction(RzAnalysis *analysis, RzAnalysisOp *op) {
 	return (fi && fi->name && (strstr(fi->name, "imp.") || strstr(fi->name, "sym.") || strstr(fi->name, "entry") || strstr(fi->name, "main")));
 }
 
-static bool is_delta_pointer_table(RzAnalysis *analysis, RzAnalysisFunction *fcn, ut64 addr, ut64 lea_ptr, ut64 *jmptbl_addr, ut64 *casetbl_addr, RzAnalysisOp *jmp_aop) {
+static bool is_delta_pointer_table(RzAnalysis *analysis, ut64 addr, ut64 lea_ptr, ut64 *jmptbl_addr, ut64 *casetbl_addr, RzAnalysisOp *jmp_aop) {
 	int i;
 	ut64 dst;
 	st32 jmptbl[64] = { 0 };
@@ -244,12 +243,17 @@ static bool is_delta_pointer_table(RzAnalysis *analysis, RzAnalysisFunction *fcn
 	for (i = 0; i < 3; i++) {
 		dst = lea_ptr + (st32)rz_read_le32(jmptbl);
 		if (!analysis->iob.is_valid_offset(analysis->iob.io, dst, 0)) {
+			RZ_LOG_VERBOSE("Jump table target is not valid: 0x%" PFMT64x "\n", dst);
 			return false;
 		}
-		if (dst > fcn->addr + JMPTBL_MAXFCNSIZE) {
+		if (!UT64_ADD_OVFCHK(jmp_aop->addr, analysis->opt.jmptbl_maxoffset) &&
+			dst > jmp_aop->addr + analysis->opt.jmptbl_maxoffset) {
+			RZ_LOG_VERBOSE("Jump table target is too far away: 0x%" PFMT64x "\n", dst);
 			return false;
 		}
-		if (analysis->opt.jmpabove && dst < (fcn->addr < JMPTBL_MAXFCNSIZE ? 0 : fcn->addr - JMPTBL_MAXFCNSIZE)) {
+		if (analysis->opt.jmpabove && !UT64_SUB_OVFCHK(jmp_aop->addr, analysis->opt.jmptbl_maxoffset) &&
+			dst < jmp_aop->addr - analysis->opt.jmptbl_maxoffset) {
+			RZ_LOG_VERBOSE("Jump table target is too far away: 0x%" PFMT64x "\n", dst);
 			return false;
 		}
 	}
@@ -985,7 +989,7 @@ static RzAnalysisBBEndCause run_basic_block_analysis(RzAnalysisTaskItem *item, R
 				RzAnalysisOp jmp_aop = { 0 };
 				ut64 jmptbl_addr = op.ptr;
 				ut64 casetbl_addr = op.ptr;
-				if (is_delta_pointer_table(analysis, fcn, op.addr, op.ptr, &jmptbl_addr, &casetbl_addr, &jmp_aop)) {
+				if (is_delta_pointer_table(analysis, op.addr, op.ptr, &jmptbl_addr, &casetbl_addr, &jmp_aop)) {
 					// we require both checks here since rz_analysis_get_jmptbl_info uses
 					// BB info of the final jmptbl jump, which is no present with
 					// is_delta_pointer_table just scanning ahead
@@ -1481,7 +1485,7 @@ beach:
  * \param block Pointer to RzAnalysisBlock in which analysis will be performed on. If null, analysis will take care of block creation.
  * \param address Address where analysis will start from
  */
-RZ_API bool rz_analysis_task_item_new(RZ_NONNULL RzAnalysis *analysis, RZ_NONNULL RzVector *tasks, RZ_NONNULL RzAnalysisFunction *fcn, RZ_NULLABLE RzAnalysisBlock *block, ut64 address) {
+RZ_API bool rz_analysis_task_item_new(RZ_NONNULL RzAnalysis *analysis, RZ_NONNULL RzVector /*<RzAnalysisTaskItem>*/ *tasks, RZ_NONNULL RzAnalysisFunction *fcn, RZ_NULLABLE RzAnalysisBlock *block, ut64 address) {
 	rz_return_val_if_fail(analysis && tasks && fcn, false);
 	RzAnalysisTaskItem item = { fcn, block, fcn->stack, address };
 	RzAnalysisTaskItem *it;
@@ -1502,7 +1506,7 @@ RZ_API bool rz_analysis_task_item_new(RZ_NONNULL RzAnalysis *analysis, RZ_NONNUL
  *
  * \param tasks Pointer to RzVector of RzAnalysisTaskItem to be performed analysis on.
  */
-RZ_API int rz_analysis_run_tasks(RZ_NONNULL RzVector *tasks) {
+RZ_API int rz_analysis_run_tasks(RZ_NONNULL RzVector /*<RzAnalysisTaskItem>*/ *tasks) {
 	rz_return_val_if_fail(tasks, RZ_ANALYSIS_RET_ERROR);
 	int ret = RZ_ANALYSIS_RET_ERROR;
 	while (!rz_vector_empty(tasks)) {
@@ -1680,7 +1684,7 @@ RZ_API int rz_analysis_fcn_del(RzAnalysis *a, ut64 addr) {
 	return true;
 }
 
-RZ_API RzAnalysisFunction *rz_analysis_get_fcn_in(RzAnalysis *analysis, ut64 addr, int type) {
+RZ_DEPRECATE RZ_API RzAnalysisFunction *rz_analysis_get_fcn_in(RzAnalysis *analysis, ut64 addr, int type) {
 	RzList *list = rz_analysis_get_functions_in(analysis, addr);
 	RzAnalysisFunction *ret = NULL;
 	if (list && !rz_list_empty(list)) {
@@ -1701,7 +1705,7 @@ RZ_API RzAnalysisFunction *rz_analysis_get_fcn_in(RzAnalysis *analysis, ut64 add
 	return ret;
 }
 
-RZ_API RzAnalysisFunction *rz_analysis_get_fcn_in_bounds(RzAnalysis *analysis, ut64 addr, int type) {
+RZ_DEPRECATE RZ_API RzAnalysisFunction *rz_analysis_get_fcn_in_bounds(RzAnalysis *analysis, ut64 addr, int type) {
 	RzAnalysisFunction *fcn, *ret = NULL;
 	RzListIter *iter;
 	if (type == RZ_ANALYSIS_FCN_TYPE_ROOT) {
@@ -2474,7 +2478,7 @@ RZ_API size_t rz_analysis_function_arg_count(RzAnalysis *a, RzAnalysisFunction *
  * \param a RzAnalysis instance
  * \param f Function
  */
-RZ_API RZ_OWN RzPVector *rz_analysis_function_args(RzAnalysis *a, RzAnalysisFunction *fcn) {
+RZ_API RZ_OWN RzPVector /*<RzAnalysisVar *>*/ *rz_analysis_function_args(RzAnalysis *a, RzAnalysisFunction *fcn) {
 	if (!a || !fcn) {
 		return NULL;
 	}
@@ -2538,7 +2542,7 @@ static int typecmp(const void *a, const void *b) {
 	return !rz_types_equal(t1, t2);
 }
 
-RZ_API RZ_OWN RzList /* RzType */ *rz_analysis_types_from_fcn(RzAnalysis *analysis, RzAnalysisFunction *fcn) {
+RZ_API RZ_OWN RzList /*<RzType *>*/ *rz_analysis_types_from_fcn(RzAnalysis *analysis, RzAnalysisFunction *fcn) {
 	RzListIter *iter;
 	RzAnalysisVar *var;
 	RzList *list = rz_analysis_var_all_list(analysis, fcn);

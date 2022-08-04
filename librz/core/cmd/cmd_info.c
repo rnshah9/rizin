@@ -370,12 +370,9 @@ RZ_IPI RzCmdStatus rz_cmd_info_whole_strings_handler(RzCore *core, int argc, con
 }
 
 RZ_IPI RzCmdStatus rz_cmd_info_purge_string_handler(RzCore *core, int argc, const char **argv) {
-	bool old_tmpseek = core->tmpseek;
-	core->tmpseek = false;
 	char *strpurge = core->bin->strpurge;
-	rz_core_cmdf(core, "e bin.str.purge=%s%s0x%" PFMT64x, strpurge ? strpurge : "",
-		strpurge && *strpurge ? "," : "", core->offset);
-	core->tmpseek = old_tmpseek;
+	char tmp[2048];
+	rz_config_set(core->config, "bin.str.purge", rz_strf(tmp, "%s%s0x%" PFMT64x, strpurge ? strpurge : "", strpurge && *strpurge ? "," : "", core->offset));
 	return RZ_CMD_STATUS_OK;
 }
 
@@ -460,12 +457,6 @@ RZ_IPI RzCmdStatus rz_cmd_info_plugins_handler(RzCore *core, int argc, const cha
 		return RZ_CMD_STATUS_OK;
 	}
 
-	const RzBinLdrPlugin *lbp = rz_bin_ldrplugin_get(core->bin, plugin_name);
-	if (lbp) {
-		rz_core_binldr_plugin_print(lbp, state);
-		return RZ_CMD_STATUS_OK;
-	}
-
 	return RZ_CMD_STATUS_ERROR;
 }
 
@@ -525,8 +516,17 @@ RZ_IPI RzCmdStatus rz_cmd_info_pdb_download_handler(RzCore *core, int argc, cons
 	if (state->mode == RZ_OUTPUT_MODE_JSON) {
 		pj_end(state->d.pj);
 	}
-	if (r > 0) {
-		eprintf("Error while downloading pdb file\n");
+	if (r > 0 && state->mode != RZ_OUTPUT_MODE_JSON) {
+		RZ_LOG_ERROR("Error while downloading pdb file\n");
+		return RZ_CMD_STATUS_ERROR;
+	}
+	return RZ_CMD_STATUS_OK;
+}
+
+RZ_IPI RzCmdStatus rz_cmd_pdb_extract_handler(RzCore *core, int argc, const char **argv) {
+	const char *file_cab = argv[1];
+	const char *output_dir = argv[2];
+	if (!rz_bin_pdb_extract_in_folder(file_cab, output_dir)) {
 		return RZ_CMD_STATUS_ERROR;
 	}
 	return RZ_CMD_STATUS_OK;

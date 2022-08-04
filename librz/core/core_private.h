@@ -16,7 +16,6 @@ RZ_IPI int fcn_cmpaddr(const void *_a, const void *_b);
 
 RZ_IPI int rz_core_analysis_set_reg(RzCore *core, const char *regname, ut64 val);
 RZ_IPI void rz_core_analysis_esil_init(RzCore *core);
-RZ_IPI void rz_core_analysis_esil_init_mem_del(RzCore *core, const char *name, ut64 addr, ut32 size);
 RZ_IPI void rz_core_analysis_esil_init_mem_p(RzCore *core);
 RZ_IPI void rz_core_analysis_esil_step_over_until(RzCore *core, ut64 addr);
 RZ_IPI void rz_core_analysis_esil_step_over_untilexpr(RzCore *core, const char *expr);
@@ -80,7 +79,6 @@ RZ_IPI RZ_OWN char *rz_core_types_typedef_as_c(RzTypeDB *typedb, const RzBaseTyp
 RZ_IPI RZ_OWN char *rz_core_types_typedef_as_c_all(RzTypeDB *typedb);
 
 RZ_IPI RZ_OWN char *rz_core_base_type_as_c(RzCore *core, RZ_NONNULL RzBaseType *type, bool multiline);
-RZ_IPI RZ_OWN char *rz_core_types_as_c(RzCore *core, RZ_NONNULL const char *name, bool multiline);
 
 RZ_IPI void rz_core_types_calling_conventions_print(RzCore *core, RzOutputMode mode);
 RZ_IPI void rz_core_types_function_print(RzTypeDB *typedb, const char *function, RzOutputMode mode, PJ *pj);
@@ -95,7 +93,7 @@ RZ_IPI void rz_core_types_link_show(RzCore *core, ut64 addr);
 RZ_IPI void rz_core_types_print_all(RzCore *core, RzOutputMode mode);
 RZ_IPI void rz_types_define(RzCore *core, const char *type);
 RZ_IPI bool rz_types_open_file(RzCore *core, const char *path);
-RZ_IPI bool rz_types_open_editor(RzCore *core, const char *typename);
+RZ_IPI bool rz_types_open_editor(RzCore *core, RZ_NONNULL const char *typename);
 
 /* agraph.c */
 RZ_IPI void rz_core_agraph_add_node(RzCore *core, const char *title, const char *body, int color);
@@ -115,10 +113,9 @@ RZ_IPI void rz_core_agraph_print_write(RzCore *core, const char *filename);
 
 RZ_IPI RzCmdStatus rz_core_bin_plugin_print(const RzBinPlugin *bp, RzCmdStateOutput *state);
 RZ_IPI RzCmdStatus rz_core_binxtr_plugin_print(const RzBinXtrPlugin *bx, RzCmdStateOutput *state);
-RZ_IPI RzCmdStatus rz_core_binldr_plugin_print(const RzBinLdrPlugin *ld, RzCmdStateOutput *state);
 
 /* creg.c */
-RZ_IPI RzList /*<RzRegItem>*/ *rz_core_reg_flags_candidates(RzCore *core, RzReg *reg);
+RZ_IPI RzList /*<RzRegItem *>*/ *rz_core_reg_flags_candidates(RzCore *core, RzReg *reg);
 RZ_IPI void rz_core_reg_print_diff(RzReg *reg, RzList *items);
 
 /* cdebug.c */
@@ -139,12 +136,23 @@ RZ_IPI void rz_core_flag_print(RzFlag *f, RzCmdStateOutput *state);
 RZ_IPI void rz_core_flag_real_name_print(RzFlag *f, RzCmdStateOutput *state);
 RZ_IPI void rz_core_flag_range_print(RzFlag *f, RzCmdStateOutput *state, ut64 range_from, ut64 range_to);
 
-/* cmd_seek.c */
+/* cdisasm.c */
+RZ_IPI bool rz_disasm_check_end(int nb_opcodes, int i_opcodes, int nb_bytes, int i_bytes);
+RZ_IPI void rz_core_asm_bb_middle(RZ_NONNULL RzCore *core, ut64 at, RZ_INOUT RZ_NONNULL int *oplen, RZ_NONNULL int *ret);
+RZ_IPI bool rz_core_handle_backwards_disasm(RZ_NONNULL RzCore *core,
+	RZ_NONNULL RZ_INOUT int *pn_opcodes, RZ_NONNULL RZ_INOUT int *pn_bytes);
 
+/* cprint.c */
+RZ_IPI bool rz_core_print_hexdump_diff(RZ_NONNULL RzCore *core, ut64 aa, ut64 ba, ut64 len);
+RZ_IPI bool rz_core_print_dump(RZ_NONNULL RzCore *core, RzOutputMode mode, ut64 addr, ut8 n, int len, RzCorePrintFormatType format);
+RZ_IPI bool rz_core_print_hexdump_or_hexdiff(RZ_NONNULL RzCore *core, RzOutputMode mode, ut64 addr, int len, bool use_comments);
+RZ_IPI bool rz_core_print_hexdump_byline(RZ_NONNULL RzCore *core, bool hex_offset, ut64 addr, int len, ut8 size);
+
+/* cmd_seek.c */
 RZ_IPI bool rz_core_seek_to_register(RzCore *core, const char *input, bool is_silent);
 RZ_IPI int rz_core_seek_opcode_forward(RzCore *core, int n, bool silent);
-RZ_IPI int rz_core_seek_opcode_forward(RzCore *core, int n, bool silent);
 RZ_IPI int rz_core_seek_opcode(RzCore *core, int numinstr, bool silent);
+RZ_IPI bool rz_core_seek_bb_instruction(RzCore *core, int index);
 
 /* cmd_meta.c */
 RZ_IPI void rz_core_meta_comment_add(RzCore *core, const char *comment, ut64 addr);
@@ -182,6 +190,10 @@ RZ_IPI RzCmdStatus rz_reg_cc_handler(RzCore *core, RzReg *reg, int argc, const c
 RZ_IPI RzCmdStatus rz_regs_diff_handler(RzCore *core, RzReg *reg, RzCmdRegSync sync_cb, int argc, const char **argv);
 RZ_IPI RzCmdStatus rz_regs_prev_handler(RzCore *core, RzReg *reg, int argc, const char **argv, RzCmdStateOutput *state);
 RZ_IPI RzCmdStatus rz_regs_fpu_handler(RzCore *core, RzReg *reg, RzCmdRegSync sync_cb, int argc, const char **argv);
+
+RZ_IPI void rz_core_print_hexdump(RZ_NONNULL RzCore *core, ut64 addr, RZ_NONNULL const ut8 *buf, int len, int base, int step, size_t zoomsz);
+RZ_IPI void rz_core_print_jsondump(RZ_NONNULL RzCore *core, RZ_NONNULL const ut8 *buf, int len, int wordsize);
+RZ_IPI void rz_core_print_hexdiff(RZ_NONNULL RzCore *core, ut64 aa, RZ_NONNULL const ut8 *_a, ut64 ba, RZ_NONNULL const ut8 *_b, int len, int scndcol);
 
 #if __WINDOWS__
 /* windows_heap.c */

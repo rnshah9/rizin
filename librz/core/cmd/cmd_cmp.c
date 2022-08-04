@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #include <rz_cmp.h>
+#include "../core_private.h"
 
 static int rizin_compare_words(RzCore *core, ut64 of, ut64 od, int len, int ws) {
 	int i;
@@ -34,18 +35,10 @@ static int rizin_compare_words(RzCore *core, ut64 of, ut64 od, int len, int ws) 
 		case 4:
 			rz_cons_printf("%s0x%08" PFMT32x " %c 0x%08" PFMT32x "%s\n", color,
 				v0.v32, ch, v1.v32, colorEnd);
-			// rz_core_cmdf (core, "fd@0x%"PFMT64x, v0.v32);
-			if (v0.v32 != v1.v32) {
-				//	rz_core_cmdf (core, "fd@0x%"PFMT64x, v1.v32);
-			}
 			break;
 		case 8:
 			rz_cons_printf("%s0x%016" PFMT64x " %c 0x%016" PFMT64x "%s\n",
 				color, v0.v64, ch, v1.v64, colorEnd);
-			// rz_core_cmdf (core, "fd@0x%"PFMT64x, v0.v64);
-			if (v0.v64 != v1.v64) {
-				//	rz_core_cmdf (core, "fd@0x%"PFMT64x, v1.v64);
-			}
 			break;
 		}
 	}
@@ -62,12 +55,12 @@ static bool rizin_compare_unified(RzCore *core, RzCompareData *cmp) {
 		min = RZ_MIN(16, (cmp->len - i));
 		if (!memcmp(cmp->data1 + i, cmp->data2 + i, min)) {
 			rz_cons_printf("  ");
-			rz_print_hexdiff(core->print, cmp->addr1 + i, cmp->data1 + i, cmp->addr1 + i, cmp->data1 + i, min, 0);
+			rz_core_print_hexdiff(core, cmp->addr1 + i, cmp->data1 + i, cmp->addr1 + i, cmp->data1 + i, min, 0);
 		} else {
 			rz_cons_printf("- ");
-			rz_print_hexdiff(core->print, cmp->addr1 + i, cmp->data1 + i, cmp->addr2 + i, cmp->data2 + i, min, 0);
+			rz_core_print_hexdiff(core, cmp->addr1 + i, cmp->data1 + i, cmp->addr2 + i, cmp->data2 + i, min, 0);
 			rz_cons_printf("+ ");
-			rz_print_hexdiff(core->print, cmp->addr2 + i, cmp->data2 + i, cmp->addr1 + i, cmp->data1 + i, min, 0);
+			rz_core_print_hexdiff(core, cmp->addr2 + i, cmp->data2 + i, cmp->addr1 + i, cmp->data1 + i, min, 0);
 		}
 	}
 	if (headers) {
@@ -191,7 +184,7 @@ RZ_IPI RzCmdStatus rz_cmd_cmp_hex_block_handler(RzCore *core, int argc, const ch
 	if (b) {
 		memset(b, 0xff, core->blocksize);
 		rz_io_nread_at(core->io, addr, b, core->blocksize);
-		rz_print_hexdiff(core->print, core->offset, core->block, addr, b, core->blocksize, col);
+		rz_core_print_hexdiff(core, core->offset, core->block, addr, b, core->blocksize, col);
 	}
 	free(b);
 	return RZ_CMD_STATUS_OK;
@@ -207,7 +200,7 @@ RZ_IPI RzCmdStatus rz_cmd_cmp_hex_diff_lines_handler(RzCore *core, int argc, con
 	if (b) {
 		memset(b, 0xff, core->blocksize);
 		rz_io_nread_at(core->io, addr, b, core->blocksize);
-		rz_print_hexdiff(core->print, core->offset, core->block, addr, b, core->blocksize, col);
+		rz_core_print_hexdiff(core, core->offset, core->block, addr, b, core->blocksize, col);
 	}
 	free(b);
 	core->print->flags = oflags;

@@ -1,6 +1,8 @@
 #ifndef RZ_NUM_H
 #define RZ_NUM_H
 
+#include <rz_list.h>
+
 #define RZ_NUMCALC_STRSZ 1024
 
 #ifdef __cplusplus
@@ -89,19 +91,19 @@ RZ_API int rz_num_to_bits(char *out, ut64 num);
 RZ_API int rz_num_to_trits(char *out, ut64 num); // Rename this please
 RZ_API int rz_num_rand(int max);
 RZ_API void rz_num_irand(void);
-RZ_API ut16 rz_num_ntohs(ut16 foo);
 RZ_API ut64 rz_get_input_num_value(RzNum *num, const char *input_value);
 RZ_API bool rz_is_valid_input_num_value(RzNum *num, const char *input_value);
 RZ_API int rz_num_between(RzNum *num, const char *input_value);
 RZ_API bool rz_num_is_op(const char c);
 RZ_API int rz_num_str_len(const char *str);
 RZ_API int rz_num_str_split(char *str);
-RZ_API RzList *rz_num_str_split_list(char *str);
+RZ_API RzList /*<char *>*/ *rz_num_str_split_list(char *str);
 RZ_API void *rz_num_dup(ut64 n);
 RZ_API size_t rz_num_base_of_string(RzNum *num, RZ_NONNULL const char *str);
 RZ_API double rz_num_cos(double a);
 RZ_API double rz_num_sin(double a);
 RZ_API double rz_num_get_float(RzNum *num, const char *str);
+RZ_API bool rz_num_is_hex_prefix(const char *p);
 
 static inline st64 rz_num_abs(st64 num) {
 	return num < 0 ? -num : num;
@@ -153,6 +155,18 @@ CONVERT_TO_TWO_COMPLEMENT(64)
 
 /// Typical comparison (1/0/-1) for two numbers of arbitrary types, including unsigned
 #define RZ_NUM_CMP(a, b) ((a) > (b) ? 1 : ((b) > (a) ? -1 : 0))
+
+/**
+ * Divide 2^64 by the given divisor
+ *
+ * Idea: https://stackoverflow.com/a/55584872
+ * Proof: https://git.sr.ht/~thestr4ng3r/isa-bit-twiddling/tree/808253ab4d262f9e7dd7b87d0396f1afd7c5804b/item/Bit_Twiddling.thy#L26-43
+ *
+ * \param divisor must be non-zero
+ */
+static inline ut64 rz_num_2_pow_64_div(ut64 divisor) {
+	return (-(st64)divisor) / divisor + 1;
+}
 
 #ifdef __cplusplus
 }

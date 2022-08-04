@@ -9,7 +9,7 @@
 #include <rz_egg.h>
 #include <rz_bp.h>
 #include <rz_io.h>
-#include <rz_msg_digest.h>
+#include <rz_hash.h>
 #include <rz_syscall.h>
 #include <rz_cmd.h>
 
@@ -300,6 +300,7 @@ typedef struct rz_debug_t {
 	bool pc_at_bp_set; /* is the pc_at_bp variable set already? */
 
 	RzEvent *ev;
+	RzHash *hash;
 
 	RzAnalysis *analysis;
 	RzList *maps; // <RzDebugMap>
@@ -453,9 +454,7 @@ RZ_API int rz_debug_continue_syscall(RzDebug *dbg, int sc);
 RZ_API int rz_debug_continue_syscalls(RzDebug *dbg, int *sc, int n_sc);
 RZ_API int rz_debug_continue(RzDebug *dbg);
 RZ_API int rz_debug_continue_kill(RzDebug *dbg, int signal);
-#if __WINDOWS__
 RZ_API int rz_debug_continue_pass_exception(RzDebug *dbg);
-#endif
 
 /* process/thread handling */
 RZ_API bool rz_debug_select(RzDebug *dbg, int pid, int tid);
@@ -480,8 +479,6 @@ RZ_API ut64 rz_debug_get_baddr(RzDebug *dbg, const char *file);
 RZ_API void rz_debug_signal_init(RzDebug *dbg);
 RZ_API int rz_debug_signal_send(RzDebug *dbg, int num);
 RZ_API int rz_debug_signal_what(RzDebug *dbg, int num);
-RZ_API int rz_debug_signal_resolve(RzDebug *dbg, const char *signame);
-RZ_API const char *rz_debug_signal_resolve_i(RzDebug *dbg, int signum);
 RZ_API void rz_debug_signal_setup(RzDebug *dbg, int num, int opt);
 RZ_API int rz_debug_signal_set(RzDebug *dbg, int num, ut64 addr);
 RZ_API void rz_debug_signal_list(RzDebug *dbg, RzOutputMode mode);
@@ -493,7 +490,6 @@ RZ_API int rz_debug_kill_setup(RzDebug *dbg, int sig, int action);
 
 /* handle.c */
 RZ_API void rz_debug_plugin_init(RzDebug *dbg);
-RZ_API int rz_debug_plugin_set(RzDebug *dbg, const char *str);
 RZ_API bool rz_debug_plugin_add(RzDebug *dbg, RzDebugPlugin *foo);
 RZ_API bool rz_debug_plugin_set_reg_profile(RzDebug *dbg, const char *str);
 
@@ -505,9 +501,8 @@ RZ_API RzList *rz_debug_map_list_new(void);
 RZ_API RzDebugMap *rz_debug_map_get(RzDebug *dbg, ut64 addr);
 RZ_API RzDebugMap *rz_debug_map_new(char *name, ut64 addr, ut64 addr_end, int perm, int user);
 RZ_API void rz_debug_map_free(RzDebugMap *map);
-RZ_API void rz_debug_map_print(RzDebug *dbg, ut64 addr, RzCmdStateOutput *state);
 RZ_API void rz_debug_map_list_visual(RzDebug *dbg, ut64 addr, const char *input, int colors);
-RZ_API RzList *rz_debug_map_list(RzDebug *dbg, bool user_map);
+RZ_API RZ_BORROW RzList *rz_debug_map_list(RzDebug *dbg, bool user_map);
 
 /* descriptors */
 RZ_API RzDebugDesc *rz_debug_desc_new(int fd, char *path, int perm, int type, int off);
@@ -596,8 +591,8 @@ RZ_API void rz_debug_session_free(RzDebugSession *session);
 
 RZ_API RzDebugSnap *rz_debug_snap_map(RzDebug *dbg, RzDebugMap *map);
 RZ_API bool rz_debug_snap_contains(RzDebugSnap *snap, ut64 addr);
-RZ_API ut8 *rz_debug_snap_get_hash(RzDebugSnap *snap, RzMsgDigestSize *size);
-RZ_API bool rz_debug_snap_is_equal(RzDebugSnap *a, RzDebugSnap *b);
+RZ_API ut8 *rz_debug_snap_get_hash(RzDebug *dbg, RzDebugSnap *snap, RzHashSize *size);
+RZ_API bool rz_debug_snap_is_equal(RzDebug *dbg, RzDebugSnap *a, RzDebugSnap *b);
 RZ_API void rz_debug_snap_free(RzDebugSnap *snap);
 
 RZ_API int rz_debug_step_back(RzDebug *dbg, int steps);

@@ -431,11 +431,11 @@ static bool cb_asmcpu(void *user, void *data) {
 	rz_config_set(core->config, "analysis.cpu", node->value);
 
 	char *cpus_dir = rz_path_system(RZ_SDB_ARCH_CPUS);
-	rz_arch_profiles_init(core->analysis->arch_target, node->value, rz_config_get(core->config, "asm.arch"), cpus_dir);
+	rz_platform_profiles_init(core->analysis->arch_target, node->value, rz_config_get(core->config, "asm.arch"), cpus_dir);
 	free(cpus_dir);
 	const char *platform = rz_config_get(core->config, "asm.platform");
 	char *platforms_dir = rz_path_system(RZ_SDB_ARCH_PLATFORMS);
-	rz_arch_platform_init(core->analysis->platform_target, rz_config_get(core->config, "asm.arch"), node->value, platform, platforms_dir);
+	rz_platform_target_index_init(core->analysis->platform_target, rz_config_get(core->config, "asm.arch"), node->value, platform, platforms_dir);
 	free(platforms_dir);
 
 	return true;
@@ -570,23 +570,20 @@ static bool cb_asmarch(void *user, void *data) {
 		update_syscall_ns(core);
 		char *platforms_dir = rz_path_system(RZ_SDB_ARCH_PLATFORMS);
 		char *cpus_dir = rz_path_system(RZ_SDB_ARCH_CPUS);
-		rz_arch_platform_init(core->analysis->platform_target, node->value, asmcpu, platform, platforms_dir);
-		rz_arch_profiles_init(core->analysis->arch_target, asmcpu, node->value, cpus_dir);
+		rz_platform_target_index_init(core->analysis->platform_target, node->value, asmcpu, platform, platforms_dir);
+		rz_platform_profiles_init(core->analysis->arch_target, asmcpu, node->value, cpus_dir);
 		free(platforms_dir);
 		free(cpus_dir);
 	}
 	__setsegoff(core->config, node->value, core->rasm->bits);
 
 	// set a default endianness
-	int bigbin = rz_bin_is_big_endian(core->bin);
-	if (bigbin == -1 /* error: no endianness detected in binary */) {
-		bigbin = rz_config_get_i(core->config, "cfg.bigendian");
-	}
+	bool big_endian = rz_config_get_b(core->config, "cfg.bigendian");
 
 	// try to set endian of RzAsm to match binary
-	rz_asm_set_big_endian(core->rasm, bigbin);
+	rz_asm_set_big_endian(core->rasm, big_endian);
 	// set endian of display to match binary
-	core->print->big_endian = bigbin;
+	core->print->big_endian = big_endian;
 
 	rz_asm_set_cpu(core->rasm, asm_cpu);
 	free(asm_cpu);
@@ -611,18 +608,15 @@ static bool cb_asmarch(void *user, void *data) {
 		rz_core_analysis_type_init(core);
 	}
 	// set endian of RzAnalysis to match binary
-	rz_analysis_set_big_endian(core->analysis, bigbin);
+	rz_analysis_set_big_endian(core->analysis, big_endian);
 	rz_core_analysis_cc_init(core);
 
 	const char *platform = rz_config_get(core->config, "asm.platform");
-	char *regs_dir = rz_path_system(RZ_SDB_REG);
-	rz_sysreg_set_arch(core->analysis->syscall, node->value, regs_dir);
-	free(regs_dir);
 	if (asmcpu) {
 		char *platforms_dir = rz_path_system(RZ_SDB_ARCH_PLATFORMS);
 		char *cpus_dir = rz_path_system(RZ_SDB_ARCH_CPUS);
-		rz_arch_platform_init(core->analysis->platform_target, node->value, asmcpu->value, platform, platforms_dir);
-		rz_arch_profiles_init(core->analysis->arch_target, asmcpu->value, node->value, cpus_dir);
+		rz_platform_target_index_init(core->analysis->platform_target, node->value, asmcpu->value, platform, platforms_dir);
+		rz_platform_profiles_init(core->analysis->arch_target, asmcpu->value, node->value, cpus_dir);
 		free(cpus_dir);
 		free(platforms_dir);
 	}
@@ -778,7 +772,7 @@ static bool cb_asmplatform(void *user, void *data) {
 	const char *asmcpu = rz_config_get(core->config, "asm.cpu");
 	const char *asmarch = rz_config_get(core->config, "asm.arch");
 	char *platforms_dir = rz_path_system(RZ_SDB_ARCH_PLATFORMS);
-	rz_arch_platform_init(core->analysis->platform_target, asmarch, asmcpu, node->value, platforms_dir);
+	rz_platform_target_index_init(core->analysis->platform_target, asmarch, asmcpu, node->value, platforms_dir);
 	free(platforms_dir);
 	return 1;
 }
@@ -934,7 +928,10 @@ static bool cb_binstrenc(void *user, void *data) {
 			if (core->bin) {
 				free(core->bin->strenc);
 				core->bin->strenc = !strcmp(node->value, "guess") ? NULL : strdup(node->value);
-				rz_bin_reset_strings(core->bin);
+				RzBinFile *bf = rz_bin_cur(core->bin);
+				if (bf && bf->o) {
+					rz_bin_object_reset_strings(core->bin, bf, bf->o);
+				}
 			}
 			return true;
 		}
@@ -948,13 +945,6 @@ static bool cb_binfilter(void *user, void *data) {
 	RzCore *core = (RzCore *)user;
 	RzConfigNode *node = (RzConfigNode *)data;
 	core->bin->filter = node->i_value;
-	return true;
-}
-
-static bool cb_useldr(void *user, void *data) {
-	RzCore *core = (RzCore *)user;
-	RzConfigNode *node = (RzConfigNode *)data;
-	core->bin->use_ldr = node->i_value;
 	return true;
 }
 
@@ -1065,14 +1055,6 @@ static bool cb_asmsyntax(void *user, void *data) {
 	return true;
 }
 
-static bool cb_dirzigns(void *user, void *data) {
-	RzCore *core = (RzCore *)user;
-	RzConfigNode *node = (RzConfigNode *)data;
-	free(core->analysis->zign_path);
-	core->analysis->zign_path = strdup(node->value);
-	return true;
-}
-
 static bool cb_bigendian(void *user, void *data) {
 	RzCore *core = (RzCore *)user;
 	RzConfigNode *node = (RzConfigNode *)data;
@@ -1161,6 +1143,13 @@ static bool cb_str_escbslash(void *user, void *data) {
 	RzCore *core = (RzCore *)user;
 	RzConfigNode *node = (RzConfigNode *)data;
 	core->print->esc_bslash = node->i_value;
+	return true;
+}
+
+static bool cb_strsearch_check_ascii_freq(void *user, void *data) {
+	RzCore *core = (RzCore *)user;
+	RzConfigNode *node = (RzConfigNode *)data;
+	core->bin->strseach_check_ascii_freq = node->i_value;
 	return true;
 }
 
@@ -2489,7 +2478,10 @@ static bool cb_binmaxstrbuf(void *user, void *data) {
 		}
 		core->bin->maxstrbuf = v;
 		if (v > old_v) {
-			rz_bin_reset_strings(core->bin);
+			RzBinFile *bf = rz_bin_cur(core->bin);
+			if (bf && bf->o) {
+				rz_bin_object_reset_strings(core->bin, bf, bf->o);
+			}
 		}
 		return true;
 	}
@@ -2505,7 +2497,10 @@ static bool cb_binmaxstr(void *user, void *data) {
 			v = 0;
 		}
 		core->bin->maxstrlen = v;
-		rz_bin_reset_strings(core->bin);
+		RzBinFile *bf = rz_bin_cur(core->bin);
+		if (bf && bf->o) {
+			rz_bin_object_reset_strings(core->bin, bf, bf->o);
+		}
 		return true;
 	}
 	return true;
@@ -2520,7 +2515,10 @@ static bool cb_binminstr(void *user, void *data) {
 			v = 4; // HACK
 		}
 		core->bin->minstrlen = v;
-		rz_bin_reset_strings(core->bin);
+		RzBinFile *bf = rz_bin_cur(core->bin);
+		if (bf && bf->o) {
+			rz_bin_object_reset_strings(core->bin, bf, bf->o);
+		}
 		return true;
 	}
 	return true;
@@ -2642,6 +2640,13 @@ static bool cb_analysis_jmptblmax(void *user, void *data) {
 	RzCore *core = (RzCore *)user;
 	RzConfigNode *node = (RzConfigNode *)data;
 	core->analysis->opt.jmptbl_maxcount = node->i_value;
+	return true;
+}
+
+static bool cb_analysis_jmptblmaxoffset(void *user, void *data) {
+	RzCore *core = (RzCore *)user;
+	RzConfigNode *node = (RzConfigNode *)data;
+	core->analysis->opt.jmptbl_maxoffset = node->i_value > UT32_MAX ? UT32_MAX : node->i_value;
 	return true;
 }
 
@@ -2931,6 +2936,7 @@ RZ_API int rz_core_config_init(RzCore *core) {
 
 	SETCB("analysis.jmp.tbl", "true", &cb_analysis_jmptbl, "Analyze jump tables in switch statements");
 	SETICB("analysis.jmp.tblmax", 512, &cb_analysis_jmptblmax, "Maximum amount of entries to analyze in jump tables");
+	SETICB("analysis.jmp.tblmaxoffset", 4096, &cb_analysis_jmptblmaxoffset, "Maximum offset from the jump table jump instruction to consider it valid");
 
 	SETCB("analysis.jmp.cref", "false", &cb_analysis_cjmpref, "Create references for conditional jumps");
 	SETCB("analysis.jmp.ref", "true", &cb_analysis_jmpref, "Create references for unconditional jumps");
@@ -3160,7 +3166,6 @@ RZ_API int rz_core_config_init(RzCore *core) {
 	/* bin */
 	SETPREF("bin.hashlimit", "10M", "Only compute hash when opening a file if smaller than this size");
 	SETCB("bin.usextr", "true", &cb_usextr, "Use extract plugins when loading files");
-	SETCB("bin.useldr", "true", &cb_useldr, "Use loader plugins when loading files");
 	SETCB("bin.str.purge", "", &cb_strpurge, "Purge strings (e bin.str.purge=? provides more detail)");
 	SETBPREF("bin.b64str", "false", "Try to debase64 the strings");
 	SETCB("bin.at", "false", &cb_binat, "RzBin.cur depends on RzCore.offset");
@@ -3244,26 +3249,6 @@ RZ_API int rz_core_config_init(RzCore *core) {
 
 	SETCB("log.events", "false", &cb_log_events, "Remote HTTP server to sync events with");
 
-	// zign
-	SETPREF("zign.prefix", "sign", "Default prefix for zignatures matches");
-	SETI("zign.maxsz", 500, "Maximum zignature length");
-	SETI("zign.minsz", 16, "Minimum zignature length for matching");
-	SETI("zign.mincc", 10, "Minimum cyclomatic complexity for matching");
-	SETBPREF("zign.match.graph", "true", "Use graph metrics for matching");
-	SETBPREF("zign.match.bytes", "true", "Use bytes patterns for matching");
-	SETBPREF("zign.match.offset", "false", "Use original offset for matching");
-	SETBPREF("zign.match.refs", "true", "Use references for matching");
-	SETBPREF("zign.match.hash", "true", "Use Hash for matching");
-	SETBPREF("zign.match.types", "false", "Use types for matching");
-	char home_zigns_msg[1024];
-	char *home_zigns_dir = rz_path_home_prefix(RZ_ZIGNS);
-	rz_strf(home_zigns_msg, "Autoload all zignatures located in %s", home_zigns_dir);
-	free(home_zigns_dir);
-	SETBPREF("zign.autoload", "false", home_zigns_msg);
-	SETPREF("zign.diff.bthresh", "1.0", "Threshold for diffing zign bytes [0, 1] (see zc?)");
-	SETPREF("zign.diff.gthresh", "1.0", "Threshold for diffing zign graphs [0, 1] (see zc?)");
-	SETPREF("zign.threshold", "0.0", "Minimum similarity required for inclusion in zb output");
-
 	/* diff */
 	SETCB("diff.sort", "addr", &cb_diff_sort, "Specify function diff sorting column see (e diff.sort=?)");
 	SETI("diff.from", 0, "Set source diffing address for px (uses cc command)");
@@ -3297,9 +3282,6 @@ RZ_API int rz_core_config_init(RzCore *core) {
 	SETPREF("dir.projects", projects_dir, "Default path for projects");
 	free(projects_dir);
 #endif
-	home_zigns_dir = rz_path_home_prefix(RZ_ZIGNS);
-	SETCB("dir.zigns", home_zigns_dir, &cb_dirzigns, "Default path for zignatures (see zo command)");
-	free(home_zigns_dir);
 	SETPREF("stack.reg", "SP", "Which register to use as stack pointer in the visual debug");
 	SETBPREF("stack.bytes", "true", "Show bytes instead of words in stack");
 	SETBPREF("stack.anotated", "false", "Show anotated hexdump in visual debug");
@@ -3588,6 +3570,8 @@ RZ_API int rz_core_config_init(RzCore *core) {
 
 	/* str */
 	SETCB("str.escbslash", "false", &cb_str_escbslash, "Escape the backslash");
+	SETCB("str.search.check_ascii_freq", "true", &cb_strsearch_check_ascii_freq,
+		"Perform ASCII frequency analysis when looking for false positives during string search");
 
 	/* search */
 	SETCB("search.contiguous", "true", &cb_contiguous, "Accept contiguous/adjacent search hits");
@@ -3655,12 +3639,12 @@ RZ_API int rz_core_config_init(RzCore *core) {
 
 	/* basefind */
 	SETB("basefind.progress", false, "Basefind threads progress (true: enable, false: disable)");
-	SETI("basefind.base.start", RZ_BASEFIND_BASE_MIN_ADDRESS, "Basefind start address value");
-	SETI("basefind.base.end", RZ_BASEFIND_BASE_MAX_ADDRESS, "Basefind end address value");
-	SETI("basefind.base.increase", RZ_BASEFIND_BASE_INCREASE, "Basefind increase address by");
-	SETI("basefind.score.min", RZ_BASEFIND_SCORE_MIN_VALUE, "Basefind min score value to consider it valid");
-	SETI("basefind.string.min", RZ_BASEFIND_STRING_MIN_LENGTH, "Basefind min string size to find to consider it valid");
-	SETI("basefind.threads.max", RZ_THREAD_POOL_ALL_CORES, "Basefind max threads number (when 0 uses all available cores)");
+	SETI("basefind.search.start", RZ_BASEFIND_BASE_MIN_ADDRESS, "Basefind start search address");
+	SETI("basefind.search.end", RZ_BASEFIND_BASE_MAX_ADDRESS, "Basefind end search address");
+	SETI("basefind.alignment", RZ_BASEFIND_BASE_ALIGNMENT, "Basefind alignment in bytes");
+	SETI("basefind.min.score", RZ_BASEFIND_SCORE_MIN_VALUE, "Basefind min score value to consider it valid");
+	SETI("basefind.min.string", RZ_BASEFIND_STRING_MIN_LENGTH, "Basefind min string size to find to consider it valid");
+	SETI("basefind.max.threads", RZ_THREAD_POOL_ALL_CORES, "Basefind max threads number (when 0 uses all available cores)");
 
 	/* nkeys */
 	SETPREF("key.s", "", "override step into action");
@@ -3710,6 +3694,8 @@ RZ_API int rz_core_config_init(RzCore *core) {
 	SETB("flirt.sig.deflate", false, "enables/disables FLIRT zlib compression when creating a signature file (available only for .sig files)");
 	SETI("flirt.node.optimize", RZ_FLIRT_NODE_OPTIMIZE_MAX, "FLIRT optimization option when creating a signature file (none: 0, normal: 1, smallest: 2)");
 	SETPREF("flirt.sigdb.path", "", "Additional user defined rizin sigdb location to load on the filesystem.");
+	SETB("flirt.sigdb.load.system", true, "Load signatures from the system path");
+	SETB("flirt.sigdb.load.home", true, "Load signatures from the home path");
 
 	rz_config_lock(cfg, true);
 	return true;
@@ -3762,4 +3748,42 @@ RZ_API void rz_core_parse_rizinrc(RzCore *r) {
 		}
 		free(homerc);
 	}
+}
+
+/**
+ * \brief Get config variable spaces
+ * \param core The RzCore instance
+ * \param space The config space
+ * \return RzList of config variable spaces
+ */
+RZ_API RZ_OWN RzList /*<char *>*/ *rz_core_config_in_space(RZ_NONNULL RzCore *core, RZ_NULLABLE const char *space) {
+	rz_return_val_if_fail(core && core->config, NULL);
+	RzList *list = rz_list_new();
+	if (!list) {
+		return NULL;
+	}
+	RzConfigNode *node;
+	RzListIter *iter;
+	rz_list_foreach (core->config->nodes, iter, node) {
+		char *name = strdup(node->name);
+		if (!name) {
+			continue;
+		}
+		char *dot = strchr(name, '.');
+		if (dot) {
+			*dot = 0;
+		}
+
+		if (RZ_STR_ISNOTEMPTY(space)) {
+			if (0 == strcmp(name, space) && dot && !rz_list_find(list, dot + 1, (RzListComparator)strcmp)) {
+				rz_list_append(list, strdup(dot + 1));
+			}
+		} else {
+			if (!rz_list_find(list, name, (RzListComparator)strcmp)) {
+				rz_list_append(list, strdup(name));
+			}
+		}
+		free(name);
+	}
+	return list;
 }

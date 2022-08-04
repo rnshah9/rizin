@@ -26,7 +26,6 @@ SECURITY IMPLICATIONS
 #define rtr_host core->rtr_host
 
 static RzSocket *s = NULL;
-static RzThread *httpthread = NULL;
 static RzThread *rapthread = NULL;
 static const char *listenport = NULL;
 
@@ -46,22 +45,17 @@ typedef struct {
 
 typedef struct {
 	RzCore *core;
-	int launch;
-	int browse;
-	char *path;
-} HttpThread;
-
-typedef struct {
-	RzCore *core;
 	char *input;
+	RzAtomicBool *loop;
 } RapThread;
 
 RZ_API void rz_core_wait(RzCore *core) {
 	rz_cons_singleton()->context->breaked = true;
-	rz_th_kill(httpthread, true);
-	rz_th_kill(rapthread, true);
-	rz_th_wait(httpthread);
-	rz_th_wait(rapthread);
+	if (rapthread) {
+		RapThread *rt = rz_th_get_user(rapthread);
+		rz_atomic_bool_set(rt->loop, false);
+		rz_th_wait(rapthread);
+	}
 }
 
 static void http_logf(RzCore *core, const char *fmt, ...) {
@@ -841,15 +835,16 @@ static bool rz_core_rtr_rap_run(RzCore *core, const char *input) {
 	// rz_core_cmdf (core, "o rap://%s", input);
 }
 
-static RzThreadFunctionRet rz_core_rtr_rap_thread(RzThread *th) {
-	if (!th) {
-		return false;
-	}
-	RapThread *rt = rz_th_get_user(th);
+static void *rz_core_rtr_rap_thread(RapThread *rt) {
 	if (!rt || !rt->core) {
 		return false;
 	}
-	return rz_core_rtr_rap_run(rt->core, rt->input) ? RZ_TH_REPEAT : RZ_TH_STOP;
+	bool loop = true;
+	while (loop) {
+		loop = rz_atomic_bool_get(rt->loop) &&
+			rz_core_rtr_rap_run(rt->core, rt->input);
+	}
+	return NULL;
 }
 
 RZ_API void rz_core_rtr_cmd(RzCore *core, const char *input) {
@@ -877,18 +872,27 @@ RZ_API void rz_core_rtr_cmd(RzCore *core, const char *input) {
 			eprintf("This is experimental and probably buggy. Use at your own risk\n");
 		} else {
 			// TODO: use tasks
-			RapThread *RT = RZ_NEW0(RapThread);
-			if (RT) {
-				RT->core = core;
-				RT->input = strdup(input + 1);
-				// RapThread rt = { core, strdup (input + 1) };
-				rapthread = rz_th_new(rz_core_rtr_rap_thread, RT, false);
-				int cpuaff = (int)rz_config_get_i(core->config, "cfg.cpuaffinity");
-				rz_th_setaffinity(rapthread, cpuaff);
-				rz_th_setname(rapthread, "rapthread");
-				rz_th_start(rapthread, true);
-				eprintf("Background rap server started.\n");
+			RapThread *rap_th = RZ_NEW0(RapThread);
+			if (!rap_th) {
+				RZ_LOG_ERROR("cannot allocate RapThread\n");
+				return;
 			}
+			rap_th->core = core;
+			rap_th->input = strdup(input + 1);
+			rap_th->loop = rz_atomic_bool_new(true);
+
+			rapthread = rz_th_new((RzThreadFunction)rz_core_rtr_rap_thread, rap_th);
+			if (!rap_th) {
+				RZ_LOG_ERROR("cannot spawn the RzThread\n");
+				return;
+			}
+			int cpuaff = (int)rz_config_get_i(core->config, "cfg.cpuaffinity");
+			if (cpuaff) {
+				// modify the affinity only when the flag is actually set.
+				rz_th_set_affinity(rapthread, cpuaff);
+			}
+			rz_th_set_name(rapthread, "rapthread");
+			RZ_LOG_WARN("Background rap server started.\n");
 		}
 		return;
 	}

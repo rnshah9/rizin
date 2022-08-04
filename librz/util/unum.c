@@ -8,6 +8,20 @@
 
 static ut64 rz_num_tailff(RzNum *num, const char *hex);
 
+/**
+ * \brief Checks if the first two chars of \p p equal "0x".
+ *
+ * \param p The string which potentially represents a hex number.
+ * \return bool True if p[0] == '0' && p[1] == 'x'. False otherwise.
+ */
+RZ_API bool rz_num_is_hex_prefix(const char *p) {
+	rz_return_val_if_fail(p, false);
+	if (!isascii(*p)) {
+		return false; // UTF-8
+	}
+	return (p[0] == '0' && p[1] == 'x');
+}
+
 // TODO: rename to rz_num_srand()
 static void rz_srand(int seed) {
 #if HAVE_ARC4RANDOM_UNIFORM
@@ -888,7 +902,7 @@ RZ_API int rz_num_str_split(char *str) {
 	return count;
 }
 
-RZ_API RzList *rz_num_str_split_list(char *str) {
+RZ_API RzList /*<char *>*/ *rz_num_str_split_list(char *str) {
 	int i, count = rz_num_str_split(str);
 	RzList *list = rz_list_new();
 	for (i = 0; i < count; i++) {

@@ -1,16 +1,22 @@
-demangler_plugins = [
+demangler_plugins_list = [
   'java',
   'msvc',
   'objc',
 ]
 
 if get_option('use_gpl')
-  demangler_plugins += ['cpp', 'rust']
+  demangler_plugins_list += ['cpp', 'rust']
 endif
 
 if get_option('use_swift_demangler')
-  demangler_plugins += 'swift'
+  demangler_plugins_list += 'swift'
 endif
+
+demangler_plugins = {
+  'conf_name': 'plugins_demangler',
+  'base_cname': 'rz_demangler_plugin_',
+  'list': demangler_plugins_list,
+}
 
 rz_demangler_sources = [
   'demangler.c'
@@ -20,12 +26,10 @@ dependencies = [rz_util_dep, libdemangle_dep]
 
 rz_demangler = library('rz_demangler', rz_demangler_sources,
   include_directories: [platform_inc],
-  c_args: library_cflags,
   dependencies: dependencies,
   install: true,
   implicit_include_directories: false,
   install_rpath: rpath_lib,
-  link_args: library_linkflags,
   soversion: rizin_libversion,
   version: rizin_version,
   name_suffix: lib_name_suffix,

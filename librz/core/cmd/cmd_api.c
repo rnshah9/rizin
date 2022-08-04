@@ -194,7 +194,6 @@ RZ_API RzCmd *rz_cmd_new(bool has_cons) {
 		return cmd;
 	}
 	cmd->has_cons = has_cons;
-	cmd->lcmds = rz_list_new();
 	for (i = 0; i < NCMDS; i++) {
 		cmd->cmds[i] = NULL;
 	}
@@ -215,7 +214,6 @@ RZ_API RzCmd *rz_cmd_free(RzCmd *cmd) {
 	rz_cmd_alias_free(cmd);
 	rz_cmd_macro_fini(&cmd->macro);
 	ht_pp_free(cmd->ht_cmds);
-	rz_list_free(cmd->lcmds);
 	for (i = 0; i < NCMDS; i++) {
 		if (cmd->cmds[i]) {
 			RZ_FREE(cmd->cmds[i]);
@@ -1373,8 +1371,6 @@ static void fill_args_json(const RzCmd *cmd, const RzCmdDesc *cd, PJ *j) {
 			CASE_TYPE(RZ_CMD_ARG_TYPE_RZNUM, "expression");
 			CASE_TYPE(RZ_CMD_ARG_TYPE_STRING, "string");
 			CASE_TYPE(RZ_CMD_ARG_TYPE_ENV, "environment_variable");
-			CASE_TYPE(RZ_CMD_ARG_TYPE_ZIGN, "zignature");
-			CASE_TYPE(RZ_CMD_ARG_TYPE_ZIGN_SPACE, "zignature_space");
 			CASE_TYPE(RZ_CMD_ARG_TYPE_CHOICES, "choice");
 			CASE_TYPE(RZ_CMD_ARG_TYPE_FCN, "function");
 			CASE_TYPE(RZ_CMD_ARG_TYPE_FILE, "filename");
@@ -2604,7 +2600,7 @@ RZ_API void rz_cmd_state_output_set_columnsf(RzCmdStateOutput *state, const char
 /**
  * \brief Clear the inner fields of RzCmdStateOutput structure, but do not free it.
  */
-RZ_API void rz_cmd_state_output_fini(RzCmdStateOutput *state) {
+RZ_API void rz_cmd_state_output_fini(RZ_NONNULL RzCmdStateOutput *state) {
 	rz_return_if_fail(state);
 
 	switch (state->mode) {
@@ -2625,7 +2621,7 @@ RZ_API void rz_cmd_state_output_fini(RzCmdStateOutput *state) {
 /**
  * \brief Free the RzCmdStateOutput structure and its inner fields appropriately
  */
-RZ_API void rz_cmd_state_output_free(RzCmdStateOutput *state) {
+RZ_API void rz_cmd_state_output_free(RZ_NONNULL RzCmdStateOutput *state) {
 	rz_return_if_fail(state);
 
 	rz_cmd_state_output_fini(state);
@@ -2635,7 +2631,7 @@ RZ_API void rz_cmd_state_output_free(RzCmdStateOutput *state) {
 /**
  * \brief Initialize a RzCmdStateOutput structure and its inner fields based on the provided mode
  */
-RZ_API bool rz_cmd_state_output_init(RzCmdStateOutput *state, RzOutputMode mode) {
+RZ_API bool rz_cmd_state_output_init(RZ_NONNULL RzCmdStateOutput *state, RzOutputMode mode) {
 	rz_return_val_if_fail(state, false);
 
 	state->mode = mode;
@@ -2669,7 +2665,7 @@ RZ_API bool rz_cmd_state_output_init(RzCmdStateOutput *state, RzOutputMode mode)
  * output was already printed to console for those types that output as they go
  * (e.g. STANDARD, QUIET).
  */
-RZ_API void rz_cmd_state_output_print(RzCmdStateOutput *state) {
+RZ_API void rz_cmd_state_output_print(RZ_NONNULL RzCmdStateOutput *state) {
 	rz_return_if_fail(state);
 
 	char *s;

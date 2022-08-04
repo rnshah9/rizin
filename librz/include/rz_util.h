@@ -21,10 +21,7 @@
 #if HAVE_LIB_SSL
 #include <openssl/bn.h>
 #endif
-#ifdef _MSC_VER
-struct timeval;
-int gettimeofday(struct timeval *p, void *tz);
-#endif
+#include "rz_util/rz_axml.h"
 #include "rz_util/rz_event.h"
 #include "rz_util/rz_assert.h"
 #include "rz_util/rz_itv.h"
@@ -50,9 +47,7 @@ int gettimeofday(struct timeval *p, void *tz);
 #include "rz_util/rz_graph.h"
 #include "rz_util/rz_path.h"
 #include "rz_util/rz_panels.h"
-#include "rz_util/rz_pool.h"
 #include "rz_util/rz_punycode.h"
-#include "rz_util/rz_queue.h"
 #include "rz_util/rz_range.h"
 #include "rz_util/rz_signal.h"
 #include "rz_util/rz_spaces.h"

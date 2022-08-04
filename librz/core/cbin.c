@@ -73,7 +73,6 @@ static char *__filterQuotedShell(const char *arg) {
 }
 
 #define STR(x) (x) ? (x) : ""
-RZ_API int rz_core_bin_set_cur(RzCore *core, RzBinFile *binfile);
 
 static ut64 rva(RzBinObject *o, ut64 paddr, ut64 vaddr, int va) {
 	if (va == VA_TRUE) {
@@ -384,7 +383,7 @@ static RzCmdStateOutput *add_header(RzCmdStateOutput *main_state, RzOutputMode d
  * \param hashes List of strings with name of hashes that RZ_CORE_BIN_ACC_SECTIONS/SEGMENTS should print
  * \return true if everything that was requested was printed well, false otherwise
  */
-RZ_API bool rz_core_bin_print(RzCore *core, RzBinFile *bf, ut32 mask, RzCoreBinFilter *filter, RzCmdStateOutput *state, RzList *hashes) {
+RZ_API bool rz_core_bin_print(RzCore *core, RZ_NONNULL RzBinFile *bf, ut32 mask, RzCoreBinFilter *filter, RzCmdStateOutput *state, RzList /*<char *>*/ *hashes) {
 	rz_return_val_if_fail(core && state, false);
 
 #define wrap_mode(header, default_mode, method) \
@@ -1313,23 +1312,15 @@ static char *construct_symbol_flagname(const char *pfx, const char *libname, con
 	return R;
 }
 
-typedef struct {
-	const char *pfx; // prefix for flags
-	char *name; // raw symbol name
-	char *libname; // name of the lib this symbol is specific to, if any
-	char *nameflag; // flag name for symbol
-	char *demname; // demangled raw symbol name
-	char *demflag; // flag name for demangled symbol
-	char *classname; // classname
-	char *classflag; // flag for classname
-	char *methname; // methods [class]::[method]
-	char *methflag; // methods flag sym.[class].[method]
-} SymName;
-
-static void sym_name_init(RzCore *r, SymName *sn, RzBinSymbol *sym, const char *lang) {
-	if (!r || !sym || !sym->name) {
-		return;
-	}
+/**
+ * \brief Initlize \p sn
+ * \param r The RzCore instance
+ * \param[out] sn The RzBinSymNames to output
+ * \param sym Symbol info
+ * \param lang Language info
+ */
+RZ_API void rz_core_sym_name_init(RZ_NONNULL RzCore *r, RZ_OUT RzBinSymNames *sn, RZ_NONNULL RzBinSymbol *sym, RZ_NULLABLE const char *lang) {
+	rz_return_if_fail(r && sym && sym->name);
 
 	bool demangle = rz_config_get_b(r->config, "bin.demangle");
 	bool keep_lib = rz_config_get_b(r->config, "bin.demangle.libs");
@@ -1360,10 +1351,29 @@ static void sym_name_init(RzCore *r, SymName *sn, RzBinSymbol *sym, const char *
 			sn->demflag = construct_symbol_flagname(pfx, sym->libname, sn->demname, -1);
 		}
 	}
+
+	RzStrEscOptions opt = {
+		.show_asciidot = false,
+		.esc_bslash = true,
+	};
+	sn->symbolname = rz_str_escape_utf8(sn->demname ? sn->demname : sn->name, &opt);
+	if (r->bin->prefix) {
+		char *tmp = rz_str_newf("%s.%s", r->bin->prefix, sn->symbolname);
+		free(sn->symbolname);
+		sn->symbolname = tmp;
+	}
 }
 
-static void sym_name_fini(SymName *sn) {
+/**
+ * \brief RZ_FREE all member of \p sn (sn->*)
+ * \param sn Symbol names
+ */
+RZ_API void rz_core_sym_name_fini(RZ_NULLABLE RzBinSymNames *sn) {
+	if (!sn) {
+		return;
+	}
 	RZ_FREE(sn->name);
+	RZ_FREE(sn->symbolname);
 	RZ_FREE(sn->libname);
 	RZ_FREE(sn->nameflag);
 	RZ_FREE(sn->demname);
@@ -1461,13 +1471,9 @@ RZ_API bool rz_core_bin_apply_symbols(RzCore *core, RzBinFile *binfile, bool va)
 			continue;
 		}
 		ut64 addr = rva(o, symbol->paddr, symbol->vaddr, va);
-		SymName sn = { 0 };
+		RzBinSymNames sn = { 0 };
 		count++;
-		sym_name_init(core, &sn, symbol, lang);
-		RzStrEscOptions opt = { 0 };
-		opt.show_asciidot = false;
-		opt.esc_bslash = true;
-		char *rz_symbol_name = rz_str_escape_utf8(sn.name, &opt);
+		rz_core_sym_name_init(core, &sn, symbol, lang);
 
 		if (is_section_symbol(symbol) || is_file_symbol(symbol)) {
 			/*
@@ -1527,8 +1533,7 @@ RZ_API bool rz_core_bin_apply_symbols(RzCore *core, RzBinFile *binfile, bool va)
 			}
 			rz_flag_space_pop(core->flags);
 		}
-		sym_name_fini(&sn);
-		free(rz_symbol_name);
+		rz_core_sym_name_fini(&sn);
 	}
 
 	// handle thumb and arm for entry point since they are not present in symbols
@@ -1633,7 +1638,7 @@ static void digests_ht_free(HtPPKv *kv) {
  * Returns the hashtable with keys of digest names and values of
  * strings containing requested digests.
  * */
-RZ_API RZ_OWN HtPP *rz_core_bin_create_digests(RzCore *core, ut64 paddr, ut64 size, RzList *digests) {
+RZ_API RZ_OWN HtPP *rz_core_bin_create_digests(RzCore *core, ut64 paddr, ut64 size, RzList /*<char *>*/ *digests) {
 	rz_return_val_if_fail(size && digests, NULL);
 	HtPP *r = ht_pp_new(NULL, digests_ht_free, NULL);
 	if (!r) {
@@ -1648,7 +1653,7 @@ RZ_API RZ_OWN HtPP *rz_core_bin_create_digests(RzCore *core, ut64 paddr, ut64 si
 			return NULL;
 		}
 		rz_io_pread_at(core->io, paddr, data, size);
-		char *chkstr = rz_msg_digest_calculate_small_block_string(digest, data, size, NULL, false);
+		char *chkstr = rz_hash_cfg_calculate_small_block_string(core->hash, digest, data, size, NULL, false);
 		if (!chkstr) {
 			continue;
 		}
@@ -1659,10 +1664,14 @@ RZ_API RZ_OWN HtPP *rz_core_bin_create_digests(RzCore *core, ut64 paddr, ut64 si
 	return r;
 }
 
-RZ_API int rz_core_bin_set_cur(RzCore *core, RzBinFile *binfile) {
-	if (!core->bin) {
-		return false;
-	}
+/**
+ * \brief Set \p binfile as current binfile
+ * \param core The RzCore instance
+ * \param binfile RzBinFile, it will find by current fd if NULL
+ * \return Success?
+ */
+RZ_API bool rz_core_bin_set_cur(RZ_NONNULL RzCore *core, RZ_NULLABLE RzBinFile *binfile) {
+	rz_return_val_if_fail(core && core->bin, false);
 	if (!binfile) {
 		// Find first available binfile
 		ut32 fd = rz_core_file_cur_fd(core);
@@ -1692,7 +1701,12 @@ static RZ_NULLABLE RZ_BORROW const RzList *core_bin_strings(RzCore *r, RzBinFile
 	return rz_bin_get_strings(r->bin);
 }
 
-static const char *get_compile_time(Sdb *binFileSdb) {
+/**
+ * \brief Get TimeDateStamp string from bf->sdb with key "info.image_file_header.TimeDateStamp_string"
+ */
+RZ_API RZ_BORROW const char *rz_core_bin_get_compile_time(RZ_NONNULL RzBinFile *bf) {
+	rz_return_val_if_fail(bf && bf->sdb, NULL);
+	Sdb *binFileSdb = bf->sdb;
 	Sdb *info_ns = sdb_ns(binFileSdb, "info", false);
 	const char *timeDateStamp_string = sdb_const_get(info_ns,
 		"image_file_header.TimeDateStamp_string", 0);
@@ -1884,19 +1898,23 @@ static bool entries_initfini_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput
 	return true;
 }
 
-RZ_API bool rz_core_bin_initfini_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state) {
+RZ_API bool rz_core_bin_initfini_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state) {
 	rz_return_val_if_fail(core && state, false);
 
 	return entries_initfini_print(core, bf, state, true);
 }
 
-RZ_API bool rz_core_bin_entries_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state) {
+RZ_API bool rz_core_bin_entries_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state) {
 	rz_return_val_if_fail(core && state, false);
 
 	return entries_initfini_print(core, bf, state, false);
 }
 
-static bool isAnExport(RzBinSymbol *s) {
+/**
+ * \brief Is RzBinSymbol exported?
+ */
+RZ_API bool rz_core_sym_is_export(RZ_NONNULL RzBinSymbol *s) {
+	rz_return_val_if_fail(s, false);
 	/* workaround for some RzBinPlugins */
 	if (s->is_imported) {
 		return false;
@@ -1930,7 +1948,7 @@ static bool symbols_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state, 
 		if (!symbol->name) {
 			continue;
 		}
-		if (only_export && !isAnExport(symbol)) {
+		if (only_export && !rz_core_sym_is_export(symbol)) {
 			continue;
 		}
 		ut64 addr = rva(o, symbol->paddr, symbol->vaddr, va);
@@ -1945,17 +1963,8 @@ static bool symbols_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state, 
 			continue;
 		}
 
-		SymName sn = { 0 };
-		sym_name_init(core, &sn, symbol, lang);
-		RzStrEscOptions opt = { 0 };
-		opt.show_asciidot = false;
-		opt.esc_bslash = true;
-		char *rz_symbol_name = rz_str_escape_utf8(sn.demname ? sn.demname : sn.name, &opt);
-		if (core->bin->prefix) {
-			char *tmp = rz_str_newf("%s.%s", core->bin->prefix, rz_symbol_name);
-			free(rz_symbol_name);
-			rz_symbol_name = tmp;
-		}
+		RzBinSymNames sn = { 0 };
+		rz_core_sym_name_init(core, &sn, symbol, lang);
 		ut64 size = symbol->size;
 
 		char addr_value[20];
@@ -1970,14 +1979,14 @@ static bool symbols_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state, 
 			rz_cons_printf("%s %" PFMT64u " %s%s%s\n",
 				addr_value, size,
 				sn.libname ? sn.libname : "", sn.libname ? " " : "",
-				rz_symbol_name);
+				sn.symbolname);
 			break;
 		case RZ_OUTPUT_MODE_QUIETEST:
-			rz_cons_printf("%s\n", rz_symbol_name);
+			rz_cons_printf("%s\n", sn.symbolname);
 			break;
 		case RZ_OUTPUT_MODE_JSON:
 			pj_o(state->d.pj);
-			pj_ks(state->d.pj, "name", rz_symbol_name);
+			pj_ks(state->d.pj, "name", sn.symbolname);
 			if (sn.demname) {
 				pj_ks(state->d.pj, "demname", sn.demname);
 			}
@@ -2006,26 +2015,25 @@ static bool symbols_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state, 
 				symbol->type ? symbol->type : "NONE",
 				size,
 				rz_str_get(symbol->libname),
-				rz_str_get_null(rz_symbol_name));
+				rz_str_get_null(sn.symbolname));
 			break;
 		default:
 			rz_warn_if_reached();
 			break;
 		}
-		sym_name_fini(&sn);
-		free(rz_symbol_name);
+		rz_core_sym_name_fini(&sn);
 	}
 	rz_cmd_state_output_array_end(state);
 	return true;
 }
 
-RZ_API bool rz_core_bin_symbols_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state, RzCoreBinFilter *filter) {
+RZ_API bool rz_core_bin_symbols_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state, RzCoreBinFilter *filter) {
 	rz_return_val_if_fail(core && state, false);
 
 	return symbols_print(core, bf, state, filter, false);
 }
 
-RZ_API bool rz_core_bin_cur_symbol_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state) {
+RZ_API bool rz_core_bin_cur_symbol_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state) {
 	rz_return_val_if_fail(core && state, false);
 
 	RzCoreBinFilter filter = { 0 };
@@ -2033,13 +2041,13 @@ RZ_API bool rz_core_bin_cur_symbol_print(RzCore *core, RzBinFile *bf, RzCmdState
 	return symbols_print(core, bf, state, &filter, false);
 }
 
-RZ_API bool rz_core_bin_exports_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state, RzCoreBinFilter *filter) {
+RZ_API bool rz_core_bin_exports_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state, RzCoreBinFilter *filter) {
 	rz_return_val_if_fail(core && state, false);
 
 	return symbols_print(core, bf, state, filter, true);
 }
 
-RZ_API bool rz_core_bin_cur_export_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state) {
+RZ_API bool rz_core_bin_cur_export_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state) {
 	rz_return_val_if_fail(core && state, false);
 
 	RzCoreBinFilter filter = { 0 };
@@ -2047,7 +2055,7 @@ RZ_API bool rz_core_bin_cur_export_print(RzCore *core, RzBinFile *bf, RzCmdState
 	return symbols_print(core, bf, state, &filter, true);
 }
 
-RZ_API bool rz_core_bin_imports_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state, RzCoreBinFilter *filter) {
+RZ_API bool rz_core_bin_imports_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state, RzCoreBinFilter *filter) {
 	rz_return_val_if_fail(core && bf && bf->o && state, false);
 
 	int bin_demangle = rz_config_get_i(core->config, "bin.demangle");
@@ -2152,7 +2160,7 @@ RZ_API bool rz_core_bin_imports_print(RzCore *core, RzBinFile *bf, RzCmdStateOut
 	return true;
 }
 
-RZ_API bool rz_core_bin_libs_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state) {
+RZ_API bool rz_core_bin_libs_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state) {
 	rz_return_val_if_fail(core && bf && bf->o && state, false);
 
 	const RzList *libs = rz_bin_object_get_libs(bf->o);
@@ -2181,7 +2189,7 @@ RZ_API bool rz_core_bin_libs_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput
 	return true;
 }
 
-RZ_API bool rz_core_bin_main_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state) {
+RZ_API bool rz_core_bin_main_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state) {
 	rz_return_val_if_fail(core && bf && bf->o && state, false);
 
 	int va = (core->io->va || core->bin->is_debugger) ? VA_TRUE : VA_FALSE;
@@ -2213,7 +2221,7 @@ RZ_API bool rz_core_bin_main_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput
 	return true;
 }
 
-RZ_API bool rz_core_bin_relocs_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state) {
+RZ_API bool rz_core_bin_relocs_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state) {
 	rz_return_val_if_fail(core && bf && bf->o && state, false);
 
 	RzBinObject *o = bf->o;
@@ -2454,14 +2462,14 @@ static void sections_headers_setup(RzCore *core, RzCmdStateOutput *state, RzList
 	rz_cmd_state_output_set_columnsf(state, "XxXxssssx", "paddr", "size", "vaddr", "vsize", "align", "perm", "name", "type", "flags");
 
 	rz_list_foreach (hashes, iter, hashname) {
-		const RzMsgDigestPlugin *msg_plugin = rz_msg_digest_plugin_by_name(hashname);
+		const RzHashPlugin *msg_plugin = rz_hash_plugin_by_name(core->hash, hashname);
 		if (msg_plugin) {
 			rz_cmd_state_output_set_columnsf(state, "s", msg_plugin->name);
 		}
 	}
 }
 
-RZ_API bool rz_core_bin_sections_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state, RzCoreBinFilter *filter, RzList *hashes) {
+RZ_API bool rz_core_bin_sections_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state, RzCoreBinFilter *filter, RzList /*<char *>*/ *hashes) {
 	rz_return_val_if_fail(core && bf && bf->o && state, false);
 
 	RzBinObject *o = bf->o;
@@ -2530,7 +2538,7 @@ err:
 	return res;
 }
 
-RZ_API bool rz_core_bin_cur_section_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state, RzList *hashes) {
+RZ_API bool rz_core_bin_cur_section_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state, RzList /*<char *>*/ *hashes) {
 	rz_return_val_if_fail(core && state, false);
 
 	RzCoreBinFilter filter = { 0 };
@@ -2538,7 +2546,7 @@ RZ_API bool rz_core_bin_cur_section_print(RzCore *core, RzBinFile *bf, RzCmdStat
 	return rz_core_bin_sections_print(core, bf, state, &filter, hashes);
 }
 
-RZ_API bool rz_core_bin_cur_segment_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state, RzList *hashes) {
+RZ_API bool rz_core_bin_cur_segment_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state, RzList /*<char *>*/ *hashes) {
 	rz_return_val_if_fail(core && bf && state, false);
 
 	RzCoreBinFilter filter = { 0 };
@@ -2546,12 +2554,50 @@ RZ_API bool rz_core_bin_cur_segment_print(RzCore *core, RzBinFile *bf, RzCmdStat
 	return rz_core_bin_segments_print(core, bf, state, &filter, hashes);
 }
 
+static bool core_basefind_progess_status(const RzBaseFindThreadInfo *th_info, void *user) {
+	rz_cons_flush();
+	rz_cons_printf("basefind: thread %u: 0x%08" PFMT64x " / 0x%08" PFMT64x " %u%%\n",
+		th_info->thread_idx, th_info->current_address,
+		th_info->end_address, th_info->percentage);
+	rz_cons_flush();
+	if ((th_info->thread_idx + 1) >= th_info->n_threads) {
+		rz_cons_gotoxy(1, rz_cons_get_cur_line() - th_info->n_threads);
+	}
+	return !rz_cons_is_breaked();
+}
+
+static bool core_basefind_check_ctrl_c(const RzBaseFindThreadInfo *th_info, void *user) {
+	return !rz_cons_is_breaked();
+}
+
 RZ_API bool rz_core_bin_basefind_print(RzCore *core, ut32 pointer_size, RzCmdStateOutput *state) {
 	rz_return_val_if_fail(core && state, false);
 	RzListIter *it = NULL;
 	RzBaseFindScore *pair = NULL;
+	RzBaseFindOpt options;
+	bool progress = rz_config_get_b(core->config, "basefind.progress");
+	int begin_line = rz_cons_get_cur_line();
 
-	RzList *scores = rz_basefind(core, pointer_size);
+	options.pointer_size = pointer_size;
+	options.start_address = rz_config_get_i(core->config, "basefind.search.start");
+	options.end_address = rz_config_get_i(core->config, "basefind.search.end");
+	options.alignment = rz_config_get_i(core->config, "basefind.alignment");
+	options.max_threads = rz_config_get_i(core->config, "basefind.max.threads");
+	options.min_score = rz_config_get_i(core->config, "basefind.min.score");
+	options.min_string_len = rz_config_get_i(core->config, "basefind.min.string");
+	options.callback = progress ? core_basefind_progess_status : core_basefind_check_ctrl_c;
+	options.user = NULL;
+
+	RzList *scores = rz_basefind(core, &options);
+
+	if (progress) {
+		// ensure the last printed line is actually the last expected line
+		// this depends on the number of the threads requested and available
+		// this requires to be called before checking the results
+		int n_cores = (int)rz_th_request_physical_cores(options.max_threads);
+		rz_cons_gotoxy(1, begin_line + n_cores);
+	}
+
 	if (!scores) {
 		return false;
 	}
@@ -2584,7 +2630,7 @@ RZ_API bool rz_core_bin_basefind_print(RzCore *core, ut32 pointer_size, RzCmdSta
 	return true;
 }
 
-RZ_API bool rz_core_bin_segments_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state, RzCoreBinFilter *filter, RzList *hashes) {
+RZ_API bool rz_core_bin_segments_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state, RzCoreBinFilter *filter, RzList /*<char *>*/ *hashes) {
 	rz_return_val_if_fail(core && bf && bf->o && state, false);
 
 	RzBinObject *o = bf->o;
@@ -2601,7 +2647,7 @@ RZ_API bool rz_core_bin_segments_print(RzCore *core, RzBinFile *bf, RzCmdStateOu
 	rz_cmd_state_output_set_columnsf(state, "XxXxssx", "paddr", "size", "vaddr", "vsize", "align", "perm", "name");
 
 	rz_list_foreach (hashes, iter, hashname) {
-		const RzMsgDigestPlugin *msg_plugin = rz_msg_digest_plugin_by_name(hashname);
+		const RzHashPlugin *msg_plugin = rz_hash_plugin_by_name(core->hash, hashname);
 		if (msg_plugin) {
 			rz_cmd_state_output_set_columnsf(state, "s", msg_plugin->name);
 		}
@@ -2660,7 +2706,7 @@ static bool strings_print(RzCore *core, RzCmdStateOutput *state, const RzList *l
 
 		section = obj ? rz_bin_get_section_at(obj, paddr, 0) : NULL;
 		section_name = section ? section->name : "";
-		type_string = rz_bin_string_type(string->type);
+		type_string = rz_str_enc_as_string(string->type);
 		if (b64str) {
 			ut8 *s = rz_base64_decode_dyn(string->string, -1);
 			if (s && *s && IS_PRINTABLE(*s)) {
@@ -2694,10 +2740,10 @@ static bool strings_print(RzCore *core, RzCmdStateOutput *state, const RzList *l
 			pj_ks(state->d.pj, "string", escaped_string);
 
 			switch (string->type) {
-			case RZ_BIN_STRING_ENC_UTF8:
-			case RZ_BIN_STRING_ENC_MUTF8:
-			case RZ_BIN_STRING_ENC_WIDE_LE:
-			case RZ_BIN_STRING_ENC_WIDE32_LE:
+			case RZ_STRING_ENC_UTF8:
+			case RZ_STRING_ENC_MUTF8:
+			case RZ_STRING_ENC_UTF16LE:
+			case RZ_STRING_ENC_UTF32LE:
 				block_list = rz_utf_block_list((const ut8 *)string->string, -1, NULL);
 				if (block_list) {
 					if (block_list[0] == 0 && block_list[1] == -1) {
@@ -2748,10 +2794,10 @@ static bool strings_print(RzCore *core, RzCmdStateOutput *state, const RzList *l
 
 			RzStrBuf *buf = rz_strbuf_new(str);
 			switch (string->type) {
-			case RZ_BIN_STRING_ENC_UTF8:
-			case RZ_BIN_STRING_ENC_MUTF8:
-			case RZ_BIN_STRING_ENC_WIDE_LE:
-			case RZ_BIN_STRING_ENC_WIDE32_LE:
+			case RZ_STRING_ENC_UTF8:
+			case RZ_STRING_ENC_MUTF8:
+			case RZ_STRING_ENC_UTF16LE:
+			case RZ_STRING_ENC_UTF32LE:
 				block_list = rz_utf_block_list((const ut8 *)string->string, -1, NULL);
 				if (block_list) {
 					if (block_list[0] == 0 && block_list[1] == -1) {
@@ -2804,29 +2850,35 @@ static bool strings_print(RzCore *core, RzCmdStateOutput *state, const RzList *l
 	return true;
 }
 
-RZ_API bool rz_core_bin_strings_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state) {
+RZ_API bool rz_core_bin_strings_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state) {
 	rz_return_val_if_fail(core && bf && state, false);
 
 	const RzList *list = rz_bin_object_get_strings(bf->o);
 	return strings_print(core, state, list);
 }
 
-RZ_API bool rz_core_bin_whole_strings_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state) {
-	rz_return_val_if_fail(core && state, false);
+/***
+ * \brief Generates a RzList struct containing RzBinString from a given RzBinFile
+ * \param core The RzCore instance
+ * \param bf The RzBinFile to use for searching for strings
+ * \return On success returns RzList pointer, otherwise NULL
+ */
+RZ_API RZ_OWN RzList /*<RzBinString *>*/ *rz_core_bin_whole_strings(RZ_NONNULL RzCore *core, RZ_NULLABLE RzBinFile *bf) {
+	rz_return_val_if_fail(core, NULL);
 
 	bool new_bf = false;
 	if (bf && strstr(bf->file, "malloc://")) {
 		// sync bf->buf to search string on it
 		ut8 *tmp = RZ_NEWS(ut8, bf->size);
 		if (!tmp) {
-			return false;
+			return NULL;
 		}
 		rz_io_read_at(core->io, 0, tmp, bf->size);
 		rz_buf_write_at(bf->buf, 0, tmp, bf->size);
 	}
 	if (!core->file) {
 		RZ_LOG_ERROR("Core file not open\n");
-		return false;
+		return NULL;
 	}
 	if (!bf) {
 		// TODO: manually creating an RzBinFile like this is a hack and abuse of RzBin API
@@ -2834,18 +2886,18 @@ RZ_API bool rz_core_bin_whole_strings_print(RzCore *core, RzBinFile *bf, RzCmdSt
 		// should be refactored out of bin.
 		bf = RZ_NEW0(RzBinFile);
 		if (!bf) {
-			return false;
+			return NULL;
 		}
 		RzIODesc *desc = rz_io_desc_get(core->io, core->file->fd);
 		if (!desc) {
 			free(bf);
-			return false;
+			return NULL;
 		}
 		bf->file = strdup(desc->name);
-		bf->size = rz_io_desc_size(desc);
+		bf->size = (int)rz_io_desc_size(desc);
 		if (bf->size == UT64_MAX) {
 			free(bf);
-			return false;
+			return NULL;
 		}
 		bf->buf = rz_buf_new_with_io_fd(&core->bin->iob, core->file->fd);
 		bf->o = NULL;
@@ -2854,13 +2906,23 @@ RZ_API bool rz_core_bin_whole_strings_print(RzCore *core, RzBinFile *bf, RzCmdSt
 	}
 	size_t min = rz_config_get_i(core->config, "bin.minstr");
 	RzList *l = rz_bin_file_strings(bf, min, true);
-	bool res = strings_print(core, state, l);
-	rz_list_free(l);
 	if (new_bf) {
 		rz_buf_free(bf->buf);
 		free(bf->file);
 		free(bf);
 	}
+	return l;
+}
+
+RZ_API bool rz_core_bin_whole_strings_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state) {
+	rz_return_val_if_fail(core && state, false);
+
+	RzList *l = rz_core_bin_whole_strings(core, bf);
+	if (!l) {
+		return false;
+	}
+	bool res = strings_print(core, state, l);
+	rz_list_free(l);
 	return res;
 }
 
@@ -2878,7 +2940,7 @@ static const char *get_filename(RzBinInfo *info, RzIODesc *desc) {
 	return "";
 }
 
-RZ_API bool rz_core_file_info_print(RzCore *core, RzBinFile *binfile, RzCmdStateOutput *state) {
+RZ_API bool rz_core_file_info_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *binfile, RZ_NONNULL RzCmdStateOutput *state) {
 	rz_return_val_if_fail(core && core->file && state, false);
 
 	bool io_cache = rz_config_get_i(core->config, "io.cache");
@@ -2979,7 +3041,7 @@ static const char *str2na(const char *s) {
 	return RZ_STR_ISEMPTY(s) ? "N/A" : s;
 }
 
-RZ_API bool rz_core_bin_info_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state) {
+RZ_API bool rz_core_bin_info_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state) {
 	rz_return_val_if_fail(core && state, false);
 
 	RzBinInfo *info = rz_bin_get_info(core->bin);
@@ -2994,7 +3056,7 @@ RZ_API bool rz_core_bin_info_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput
 	int bits;
 
 	havecode = is_executable(obj) | (obj->entries != NULL);
-	compiled = get_compile_time(bf->sdb);
+	compiled = rz_core_bin_get_compile_time(bf);
 	bits = (plugin && !strcmp(plugin->name, "any")) ? rz_config_get_i(core->config, "asm.bits") : info->bits;
 	const char *endian = info->big_endian ? "BE" : "LE";
 
@@ -3708,7 +3770,7 @@ static void bin_class_print_rizin(RzCore *r, RzBinClass *c, ut64 at_min) {
 	}
 }
 
-RZ_API bool rz_core_bin_class_as_source_print(RzCore *core, RzBinFile *bf, const char *class_name) {
+RZ_API bool rz_core_bin_class_as_source_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, const char *class_name) {
 	rz_return_val_if_fail(core && bf, false);
 
 	RzBinClass *c;
@@ -3749,7 +3811,7 @@ RZ_API bool rz_core_bin_class_as_source_print(RzCore *core, RzBinFile *bf, const
 	return found;
 }
 
-RZ_API bool rz_core_bin_class_fields_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state, const char *class_name) {
+RZ_API bool rz_core_bin_class_fields_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state, const char *class_name) {
 	rz_return_val_if_fail(core && bf && bf->o && state, false);
 
 	RzListIter *iter, *iter2;
@@ -3816,7 +3878,7 @@ RZ_API bool rz_core_bin_class_fields_print(RzCore *core, RzBinFile *bf, RzCmdSta
 	return true;
 }
 
-RZ_API bool rz_core_bin_class_methods_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state, const char *class_name) {
+RZ_API bool rz_core_bin_class_methods_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state, const char *class_name) {
 	rz_return_val_if_fail(core && bf && bf->o && state, false);
 
 	RzListIter *iter, *iter2;
@@ -3874,7 +3936,7 @@ RZ_API bool rz_core_bin_class_methods_print(RzCore *core, RzBinFile *bf, RzCmdSt
 	return true;
 }
 
-RZ_API bool rz_core_bin_classes_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state) {
+RZ_API bool rz_core_bin_classes_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state) {
 	rz_return_val_if_fail(core && bf && bf->o && state, false);
 
 	RzListIter *iter, *iter2, *iter3;
@@ -3973,7 +4035,7 @@ RZ_API bool rz_core_bin_classes_print(RzCore *core, RzBinFile *bf, RzCmdStateOut
 	return true;
 }
 
-RZ_API bool rz_core_bin_signatures_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state) {
+RZ_API bool rz_core_bin_signatures_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state) {
 	rz_return_val_if_fail(core && state, false);
 
 	RzBinFile *cur = rz_bin_cur(core->bin);
@@ -4005,7 +4067,7 @@ RZ_API bool rz_core_bin_signatures_print(RzCore *core, RzBinFile *bf, RzCmdState
 	return true;
 }
 
-RZ_API bool rz_core_bin_fields_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state) {
+RZ_API bool rz_core_bin_fields_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state) {
 	rz_return_val_if_fail(core && bf && bf->o && state, false);
 
 	const RzList *fields = rz_bin_object_get_fields(bf->o);
@@ -4057,7 +4119,7 @@ RZ_API bool rz_core_bin_fields_print(RzCore *core, RzBinFile *bf, RzCmdStateOutp
 	return true;
 }
 
-RZ_API bool rz_core_bin_headers_print(RzCore *core, RzBinFile *bf) {
+RZ_API bool rz_core_bin_headers_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf) {
 	rz_return_val_if_fail(core, false);
 
 	RzBinFile *cur = rz_bin_cur(core->bin);
@@ -4208,8 +4270,7 @@ static void bin_elf_versioninfo_versym(RzCore *r, PJ *pj, int mode) {
 	}
 
 	if (IS_MODE_JSON(mode)) {
-		pj_o(pj);
-		pj_ka(pj, "versym");
+		pj_ka(pj, "versym"); // "versym": [
 	}
 
 	const ut64 addr = sdb_num_get(sdb, "addr", 0);
@@ -4217,10 +4278,10 @@ static void bin_elf_versioninfo_versym(RzCore *r, PJ *pj, int mode) {
 	const ut64 num_entries = sdb_num_get(sdb, "num_entries", 0);
 
 	if (IS_MODE_JSON(mode)) {
-		pj_o(pj);
+		pj_o(pj); // {
 		pj_kn(pj, "address", addr);
 		pj_kn(pj, "offset", offset);
-		pj_ka(pj, "entries");
+		pj_ka(pj, "entries"); // "entries": [
 	} else {
 		rz_cons_printf("Version symbols has %" PFMT64u " entries:\n", num_entries);
 		rz_cons_printf(" Addr: 0x%08" PFMT64x "  Offset: 0x%08" PFMT64x "\n",
@@ -4247,8 +4308,9 @@ static void bin_elf_versioninfo_versym(RzCore *r, PJ *pj, int mode) {
 	}
 
 	if (IS_MODE_JSON(mode)) {
-		pj_end(pj);
-		pj_end(pj);
+		pj_end(pj); // ] entries
+		pj_end(pj); // }
+		pj_end(pj); // ] versym
 	} else {
 		rz_cons_printf("\n\n");
 	}
@@ -4261,18 +4323,17 @@ static void bin_elf_versioninfo_verneed(RzCore *r, PJ *pj, int mode) {
 	}
 
 	if (IS_MODE_JSON(mode)) {
-		pj_end(pj);
-		pj_ka(pj, "verneed");
+		pj_ka(pj, "verneed"); // "verneed": 1[
 	}
 
 	const ut64 address = sdb_num_get(sdb, "addr", 0);
 	const ut64 offset = sdb_num_get(sdb, "offset", 0);
 
 	if (IS_MODE_JSON(mode)) {
-		pj_o(pj);
+		pj_o(pj); // 1{
 		pj_kn(pj, "address", address);
 		pj_kn(pj, "offset", offset);
-		pj_ka(pj, "entries");
+		pj_ka(pj, "entries"); // "entries": 2[
 	} else {
 		rz_cons_printf("Version need has %d entries:\n",
 			(int)sdb_num_get(sdb, "num_entries", 0));
@@ -4294,7 +4355,7 @@ static void bin_elf_versioninfo_verneed(RzCore *r, PJ *pj, int mode) {
 		}
 
 		if (IS_MODE_JSON(mode)) {
-			pj_o(pj);
+			pj_o(pj); // 2{
 			pj_kn(pj, "idx", sdb_num_get(sdb, "idx", 0));
 			pj_ki(pj, "vn_version", (int)sdb_num_get(sdb, "vn_version", 0));
 		} else {
@@ -4319,7 +4380,7 @@ static void bin_elf_versioninfo_verneed(RzCore *r, PJ *pj, int mode) {
 		}
 
 		if (IS_MODE_JSON(mode)) {
-			pj_ka(pj, "vernaux");
+			pj_ka(pj, "vernaux"); // "vernaux": 3[
 		}
 
 		do {
@@ -4349,29 +4410,35 @@ static void bin_elf_versioninfo_verneed(RzCore *r, PJ *pj, int mode) {
 		} while (sdb);
 
 		if (IS_MODE_JSON(mode)) {
-			pj_end(pj);
-			pj_end(pj);
+			pj_end(pj); // 3] vernaux
+			pj_end(pj); // 2}
 		}
 	}
 
 	if (IS_MODE_JSON(mode)) {
-		pj_end(pj);
-		pj_end(pj);
-	}
-
-	if (IS_MODE_JSON(mode)) {
-		pj_end(pj);
-		pj_end(pj);
+		pj_end(pj); // 2] entries
+		pj_end(pj); // 1}
+		pj_end(pj); // 1] verneed
 	}
 }
 
 static void bin_elf_versioninfo(RzCore *r, PJ *pj, int mode) {
+	if (IS_MODE_JSON(mode)) {
+		pj_o(pj);
+	}
 	bin_elf_versioninfo_versym(r, pj, mode);
 	bin_elf_versioninfo_verneed(r, pj, mode);
+	if (IS_MODE_JSON(mode)) {
+		pj_end(pj);
+	}
 }
 
-static void bin_mach0_versioninfo(RzCore *r) {
+static void bin_mach0_versioninfo(RzCore *r, PJ *pj, int mode) {
 	/* TODO */
+	if (IS_MODE_JSON(mode)) {
+		pj_o(pj);
+		pj_end(pj);
+	}
 }
 
 static int bin_versioninfo(RzCore *r, PJ *pj, int mode) {
@@ -4384,9 +4451,12 @@ static int bin_versioninfo(RzCore *r, PJ *pj, int mode) {
 	} else if (!strncmp("elf", info->rclass, 3)) {
 		bin_elf_versioninfo(r, pj, mode);
 	} else if (!strncmp("mach0", info->rclass, 5)) {
-		bin_mach0_versioninfo(r);
+		bin_mach0_versioninfo(r, pj, mode);
 	} else {
-		if (mode != RZ_MODE_JSON) {
+		if (IS_MODE_JSON(mode)) {
+			pj_o(pj);
+			pj_end(pj);
+		} else {
 			rz_cons_println("Unknown format");
 		}
 		return false;
@@ -4782,44 +4852,11 @@ RZ_IPI RzCmdStatus rz_core_binxtr_plugin_print(const RzBinXtrPlugin *bx, RzCmdSt
 	return RZ_CMD_STATUS_OK;
 }
 
-RZ_IPI RzCmdStatus rz_core_binldr_plugin_print(const RzBinLdrPlugin *ld, RzCmdStateOutput *state) {
-	rz_return_val_if_fail(ld && state, RZ_CMD_STATUS_ERROR);
-
-	const char *name;
-
-	rz_cmd_state_output_set_columnsf(state, "sss", "type", "name", "description");
-	switch (state->mode) {
-	case RZ_OUTPUT_MODE_QUIET:
-		rz_cons_printf("%s\n", ld->name);
-		break;
-	case RZ_OUTPUT_MODE_JSON:
-		pj_o(state->d.pj);
-		pj_ks(state->d.pj, "name", ld->name);
-		pj_ks(state->d.pj, "description", ld->desc);
-		pj_ks(state->d.pj, "license", ld->license ? ld->license : "???");
-		pj_end(state->d.pj);
-		break;
-	case RZ_OUTPUT_MODE_STANDARD:
-		name = strncmp(ld->name, "ldr.", 4) ? ld->name : ld->name + 3;
-		rz_cons_printf("ldr  %-11s %s (%s)\n", name,
-			ld->desc, ld->license ? ld->license : "???");
-		break;
-	case RZ_OUTPUT_MODE_TABLE:
-		rz_table_add_rowf(state->d.t, "sss", "ldr", ld->name, ld->desc);
-		break;
-	default:
-		rz_warn_if_reached();
-		return RZ_CMD_STATUS_NONEXISTINGCMD;
-	}
-	return RZ_CMD_STATUS_OK;
-}
-
 RZ_API RzCmdStatus rz_core_bin_plugins_print(RzBin *bin, RzCmdStateOutput *state) {
 	rz_return_val_if_fail(bin && state, RZ_CMD_STATUS_ERROR);
 
 	RzBinPlugin *bp;
 	RzBinXtrPlugin *bx;
-	RzBinLdrPlugin *ld;
 	RzListIter *iter;
 	RzCmdStatus status;
 
@@ -4836,23 +4873,17 @@ RZ_API RzCmdStatus rz_core_bin_plugins_print(RzBin *bin, RzCmdStateOutput *state
 			return status;
 		}
 	}
-	rz_list_foreach (bin->binldrs, iter, ld) {
-		status = rz_core_binldr_plugin_print(ld, state);
-		if (status != RZ_CMD_STATUS_OK) {
-			return status;
-		}
-	}
 	rz_cmd_state_output_array_end(state);
 	return RZ_CMD_STATUS_OK;
 }
 
-RZ_API bool rz_core_bin_dwarf_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state) {
+RZ_API bool rz_core_bin_dwarf_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state) {
 	rz_return_val_if_fail(core && state, false);
 
 	return bin_dwarf(core, bf, state);
 }
 
-RZ_API char *rz_core_bin_pdb_get_filename(RzCore *core) {
+RZ_API RZ_OWN char *rz_core_bin_pdb_get_filename(RZ_NONNULL RzCore *core) {
 	RzBinInfo *info = rz_bin_get_info(core->bin);
 	/* Autodetect local file */
 	if (!info || !info->debug_file_name) {
@@ -4921,7 +4952,7 @@ static void bin_memory_print_rec(RzCmdStateOutput *state, RzBinMem *mirror, cons
 	}
 }
 
-RZ_API bool rz_core_bin_memory_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state) {
+RZ_API bool rz_core_bin_memory_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state) {
 	rz_return_val_if_fail(core && bf && bf->o && state, false);
 
 	rz_cmd_state_output_array_start(state);
@@ -5011,7 +5042,7 @@ end:
 	pj_end(state->d.pj);
 }
 
-RZ_API bool rz_core_bin_resources_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state, RZ_NULLABLE RzList *hashes) {
+RZ_API bool rz_core_bin_resources_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state, RZ_NULLABLE RzList /*<char *>*/ *hashes) {
 	rz_return_val_if_fail(core && state && bf, false);
 	RzBinResource *resource = NULL;
 	RzListIter *it = NULL;
@@ -5021,7 +5052,7 @@ RZ_API bool rz_core_bin_resources_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBi
 	rz_cmd_state_output_set_columnsf(state, "dssXxss", "index", "name", "type", "vaddr", "size", "lang", "timestamp");
 
 	rz_list_foreach (hashes, it, hashname) {
-		const RzMsgDigestPlugin *msg_plugin = rz_msg_digest_plugin_by_name(hashname);
+		const RzHashPlugin *msg_plugin = rz_hash_plugin_by_name(core->hash, hashname);
 		if (msg_plugin) {
 			rz_cmd_state_output_set_columnsf(state, "s", msg_plugin->name);
 		}
@@ -5050,7 +5081,7 @@ RZ_API bool rz_core_bin_resources_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBi
 	return true;
 }
 
-RZ_API bool rz_core_bin_versions_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state) {
+RZ_API bool rz_core_bin_versions_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state) {
 	rz_return_val_if_fail(core && state, false);
 
 	// TODO: add rz_bin_object_get_versions and switch to table + json output
@@ -5068,7 +5099,7 @@ RZ_API bool rz_core_bin_versions_print(RzCore *core, RzBinFile *bf, RzCmdStateOu
 	return true;
 }
 
-RZ_API bool rz_core_bin_trycatch_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state) {
+RZ_API bool rz_core_bin_trycatch_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state) {
 	rz_return_val_if_fail(core && state, false);
 
 	// TODO: add rz_bin_object_get_trycatch and switch to table + json output
@@ -5083,7 +5114,7 @@ RZ_API bool rz_core_bin_trycatch_print(RzCore *core, RzBinFile *bf, RzCmdStateOu
 	return true;
 }
 
-RZ_API bool rz_core_bin_sections_mapping_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state) {
+RZ_API bool rz_core_bin_sections_mapping_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state) {
 	rz_return_val_if_fail(core && bf && bf->o && state, false);
 	rz_warn_if_fail(state->mode == RZ_OUTPUT_MODE_TABLE);
 
@@ -5117,7 +5148,7 @@ RZ_API bool rz_core_bin_sections_mapping_print(RzCore *core, RzBinFile *bf, RzCm
 	return true;
 }
 
-RZ_API bool rz_core_bin_size_print(RzCore *core, RzBinFile *bf, RzCmdStateOutput *state) {
+RZ_API bool rz_core_bin_size_print(RZ_NONNULL RzCore *core, RZ_NONNULL RzBinFile *bf, RZ_NONNULL RzCmdStateOutput *state) {
 	rz_return_val_if_fail(core && state, false);
 
 	ut64 size = rz_bin_get_size(core->bin);
@@ -5183,7 +5214,7 @@ static void print_arch(RzBin *bin, RzCmdStateOutput *state, struct arch_ctx *ctx
 	}
 }
 
-RZ_API bool rz_core_bin_archs_print(RzBin *bin, RzCmdStateOutput *state) {
+RZ_API bool rz_core_bin_archs_print(RZ_NONNULL RzBin *bin, RZ_NONNULL RzCmdStateOutput *state) {
 	rz_return_val_if_fail(bin && state, false);
 
 	RzBinFile *binfile = rz_bin_cur(bin);

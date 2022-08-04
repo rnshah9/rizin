@@ -3,6 +3,64 @@
 ---
 name: cmd_print
 commands:
+  - name: pb
+    summary: Print bitstream of <n> bits, skipping the first <skip> bits.
+    cname: print_bitstream
+    modes:
+      - RZ_OUTPUT_MODE_STANDARD
+    args:
+      - name: n
+        type: RZ_CMD_ARG_TYPE_RZNUM
+      - name: skip
+        type: RZ_CMD_ARG_TYPE_RZNUM
+        default_value: 0
+  - name: pB
+    summary: Print bitstream of <n> bytes
+    cname: print_byte_bitstream
+    modes:
+      - RZ_OUTPUT_MODE_STANDARD
+    args:
+      - name: n
+        type: RZ_CMD_ARG_TYPE_RZNUM
+  - name: pa
+    summary: Print (dis)assembly of given hexpairs/assembly
+    subcommands:
+      - name: pa
+        summary: Print hexpairs of the given assembly expression
+        cname: hex_of_assembly
+        modes:
+          - RZ_OUTPUT_MODE_STANDARD
+        args:
+          - name: assembly
+            type: RZ_CMD_ARG_TYPE_STRING
+            optional: false
+      - name: pae
+        summary: Print ESIL expression of the given assembly expression
+        cname: esil_of_assembly
+        modes:
+          - RZ_OUTPUT_MODE_STANDARD
+        args:
+          - name: assembly
+            type: RZ_CMD_ARG_TYPE_STRING
+            optional: false
+      - name: pad
+        summary: Print assembly expression from hexpairs (alias for pix)
+        cname: assembly_of_hex
+        modes:
+          - RZ_OUTPUT_MODE_STANDARD
+        args:
+          - name: hexpair
+            type: RZ_CMD_ARG_TYPE_STRING
+            optional: false
+      - name: pade
+        summary: Print ESIL expression from hexpairs
+        cname: esil_of_hex
+        modes:
+          - RZ_OUTPUT_MODE_STANDARD
+        args:
+          - name: hexpair
+            type: RZ_CMD_ARG_TYPE_STRING
+            optional: false
   - name: pc
     summary: Print bytes as code byte arrays.
     cname: cmd_print_byte_array
@@ -90,6 +148,19 @@ commands:
         summary: Generate a rizin commands for writing the byte array.
         cname: cmd_print_byte_array_rizin
         args: []
+  - name: pD
+    summary: Disassemble N bytes (can be negative)
+    cname: cmd_disassembly_n_bytes
+    type: RZ_CMD_DESC_TYPE_ARGV_STATE
+    modes:
+      - RZ_OUTPUT_MODE_STANDARD
+      - RZ_OUTPUT_MODE_QUIET
+      - RZ_OUTPUT_MODE_TABLE
+      - RZ_OUTPUT_MODE_JSON
+    args:
+      - name: n_bytes
+        type: RZ_CMD_ARG_TYPE_RZNUM
+        optional: true
   - name: pd
     summary: Print Disassembly
     cname: cmd_print_disassembly
@@ -323,13 +394,13 @@ commands:
     subcommands:
       - name: ph
         summary: Prints a hash/message digest or entropy (use @! to change the block size)
-        cname: cmd_print_msg_digest
+        cname: cmd_print_hash_cfg
         args:
           - name: algo
             type: RZ_CMD_ARG_TYPE_STRING
       - name: phl
         summary: Lists all the supported algorithms
-        cname: cmd_print_msg_digest_algo_list
+        cname: cmd_print_hash_cfg_algo_list
         type: RZ_CMD_DESC_TYPE_ARGV_STATE
         modes:
           - RZ_OUTPUT_MODE_STANDARD
@@ -337,6 +408,15 @@ commands:
           - RZ_OUTPUT_MODE_JSON
           - RZ_OUTPUT_MODE_QUIET
         args: []
+  - name: pix
+    summary: Print assembly expression from hexpairs (alias for pad)
+    cname: assembly_of_hex_alias
+    modes:
+      - RZ_OUTPUT_MODE_STANDARD
+    args:
+      - name: hexpair
+        type: RZ_CMD_ARG_TYPE_STRING
+        optional: false
   - name: pt
     summary: Print timestamps
     cname: cmd_print_timestamp
@@ -370,6 +450,12 @@ commands:
         optional: true
     modes:
       - RZ_OUTPUT_MODE_JSON
+  - name: psc
+    summary: Generate a C/C++ string
+    cname: print_string_c_cpp
+    modes:
+      - RZ_OUTPUT_MODE_STANDARD
+    args: []
   - name: psw
     summary: Print buffer as a utf16le string
     cname: print_utf16le
@@ -410,3 +496,322 @@ commands:
       - name: type
         type: RZ_CMD_ARG_TYPE_NUM
         optional: true
+  - name: px
+    summary: Show hexdump
+    subcommands:
+      - name: px
+        summary: show hexdump
+        cname: print_hexdump
+        type: RZ_CMD_DESC_TYPE_ARGV_STATE
+        modes:
+          - RZ_OUTPUT_MODE_STANDARD
+          - RZ_OUTPUT_MODE_JSON
+        args:
+          - name: len
+            type: RZ_CMD_ARG_TYPE_RZNUM
+            optional: true
+      - name: pxa
+        summary: show annotated hexdump
+        cname: print_hexdump_annotated
+        args:
+          - name: len
+            type: RZ_CMD_ARG_TYPE_RZNUM
+            optional: true
+      - name: pxA
+        summary: show op analysis color map
+        cname: print_op_analysis_color_map
+        type: RZ_CMD_DESC_TYPE_ARGV_STATE
+        modes:
+          - RZ_OUTPUT_MODE_STANDARD
+          - RZ_OUTPUT_MODE_LONG
+        args:
+          - name: len
+            type: RZ_CMD_ARG_TYPE_RZNUM
+            optional: true
+      - name: pxb
+        summary: dump bits in hexdump form
+        cname: print_hexdump_bits
+        args:
+          - name: len
+            type: RZ_CMD_ARG_TYPE_RZNUM
+            optional: true
+      - name: pxc
+        summary: show hexdump with comments
+        cname: print_hexdump_comments
+        args:
+          - name: len
+            type: RZ_CMD_ARG_TYPE_RZNUM
+            optional: true
+      - name: pxd
+        summary: show signed integer dump
+        subcommands:
+          - name: pxd
+            summary: show 1-byte integer dump
+            cname: print_hexdump_signed_integer
+            type: RZ_CMD_DESC_TYPE_ARGV_STATE
+            modes:
+              - RZ_OUTPUT_MODE_STANDARD
+              - RZ_OUTPUT_MODE_JSON
+            args:
+              - name: len
+                type: RZ_CMD_ARG_TYPE_RZNUM
+                optional: true
+          - name: pxdh
+            summary: show 2-bytes integer dump
+            cname: print_hexdump_signed_integer2
+            type: RZ_CMD_DESC_TYPE_ARGV_STATE
+            modes:
+              - RZ_OUTPUT_MODE_STANDARD
+              - RZ_OUTPUT_MODE_JSON
+            args:
+              - name: len
+                type: RZ_CMD_ARG_TYPE_RZNUM
+                optional: true
+          - name: pxdw
+            summary: show 4-bytes integer dump
+            cname: print_hexdump_signed_integer4
+            type: RZ_CMD_DESC_TYPE_ARGV_STATE
+            modes:
+              - RZ_OUTPUT_MODE_STANDARD
+              - RZ_OUTPUT_MODE_JSON
+            args:
+              - name: len
+                type: RZ_CMD_ARG_TYPE_RZNUM
+                optional: true
+          - name: pxdq
+            summary: show 8-bytes integer dump
+            cname: print_hexdump_signed_integer8
+            type: RZ_CMD_DESC_TYPE_ARGV_STATE
+            modes:
+              - RZ_OUTPUT_MODE_STANDARD
+              - RZ_OUTPUT_MODE_JSON
+            args:
+              - name: len
+                type: RZ_CMD_ARG_TYPE_RZNUM
+                optional: true
+      - name: pxe
+        summary: emoji hexdump! :)
+        cname: print_hexdump_emoji
+        args:
+          - name: len
+            type: RZ_CMD_ARG_TYPE_RZNUM
+            optional: true
+      - name: pxf
+        summary: show hexdump of current function
+        cname: print_hexdump_function
+        args:
+          - name: len
+            type: RZ_CMD_ARG_TYPE_RZNUM
+            optional: true
+      - name: pxi
+        summary: HexII compact binary representation
+        cname: print_hexdump_hexii
+        args:
+          - name: len
+            type: RZ_CMD_ARG_TYPE_RZNUM
+            optional: true
+      - name: pxr
+        summary: show hexword references
+        subcommands:
+          - name: pxr
+            summary: show hexword references
+            cname: print_hexword_references
+            type: RZ_CMD_DESC_TYPE_ARGV_STATE
+            modes:
+              - RZ_OUTPUT_MODE_QUIET
+              - RZ_OUTPUT_MODE_STANDARD
+              - RZ_OUTPUT_MODE_JSON
+              - RZ_OUTPUT_MODE_TABLE
+              - RZ_OUTPUT_MODE_RIZIN
+            args:
+              - name: len
+                type: RZ_CMD_ARG_TYPE_RZNUM
+                optional: true
+          - name: pxr1
+            summary: show hexword references
+            cname: print_hexword_references_1
+            type: RZ_CMD_DESC_TYPE_ARGV_STATE
+            modes:
+              - RZ_OUTPUT_MODE_QUIET
+              - RZ_OUTPUT_MODE_STANDARD
+              - RZ_OUTPUT_MODE_JSON
+              - RZ_OUTPUT_MODE_TABLE
+              - RZ_OUTPUT_MODE_RIZIN
+            args:
+              - name: len
+                type: RZ_CMD_ARG_TYPE_RZNUM
+                optional: true
+          - name: pxr2
+            summary: show hexword references with hexdump
+            cname: print_hexword_references_2
+            type: RZ_CMD_DESC_TYPE_ARGV_STATE
+            modes:
+              - RZ_OUTPUT_MODE_QUIET
+              - RZ_OUTPUT_MODE_STANDARD
+              - RZ_OUTPUT_MODE_JSON
+              - RZ_OUTPUT_MODE_TABLE
+              - RZ_OUTPUT_MODE_RIZIN
+            args:
+              - name: len
+                type: RZ_CMD_ARG_TYPE_RZNUM
+                optional: true
+          - name: pxr4
+            summary: show hexword references with hexdump
+            cname: print_hexword_references_4
+            type: RZ_CMD_DESC_TYPE_ARGV_STATE
+            modes:
+              - RZ_OUTPUT_MODE_QUIET
+              - RZ_OUTPUT_MODE_STANDARD
+              - RZ_OUTPUT_MODE_JSON
+              - RZ_OUTPUT_MODE_TABLE
+              - RZ_OUTPUT_MODE_RIZIN
+            args:
+              - name: len
+                type: RZ_CMD_ARG_TYPE_RZNUM
+                optional: true
+          - name: pxr8
+            summary: show hexword references with hexdump
+            cname: print_hexword_references_8
+            type: RZ_CMD_DESC_TYPE_ARGV_STATE
+            modes:
+              - RZ_OUTPUT_MODE_QUIET
+              - RZ_OUTPUT_MODE_STANDARD
+              - RZ_OUTPUT_MODE_JSON
+              - RZ_OUTPUT_MODE_TABLE
+              - RZ_OUTPUT_MODE_RIZIN
+            args:
+              - name: len
+                type: RZ_CMD_ARG_TYPE_RZNUM
+                optional: true
+      - name: pxs
+        summary: show hexadecimal in sparse mode
+        cname: print_hexdump_sparse
+        args:
+          - name: len
+            type: RZ_CMD_ARG_TYPE_RZNUM
+            optional: true
+      - name: pxt
+        summary: show delta pointer table in rizin commands
+        cname: print_delta_pointer_table
+        type: RZ_CMD_DESC_TYPE_ARGV_STATE
+        modes:
+          - RZ_OUTPUT_MODE_STANDARD
+          - RZ_OUTPUT_MODE_JSON
+        args: []
+      - name: pxx
+        summary: show <N> bytes of hex-less hexdump
+        cname: print_hexdump_hexless_bytes
+        args: []
+      - name: pxX
+        summary: show <N> words of hex-less hexdump
+        cname: print_hexdump_hexless_words
+        args:
+          - name: N
+            type: RZ_CMD_ARG_TYPE_RZNUM
+            optional: true
+      - name: px0
+        summary: 8bit hexpair list of bytes until zero byte
+        cname: print_hexdump_hexpair_bytes
+        args:
+          - name: N
+            type: RZ_CMD_ARG_TYPE_RZNUM
+            optional: true
+      - name: pxh
+        summary: show 2-bytes hexadecimal integers dump
+        cname: print_hexdump_hex2
+        type: RZ_CMD_DESC_TYPE_ARGV_STATE
+        modes:
+          - RZ_OUTPUT_MODE_STANDARD
+          - RZ_OUTPUT_MODE_JSON
+        args:
+          - name: len
+            type: RZ_CMD_ARG_TYPE_RZNUM
+            optional: true
+      - name: pxH
+        summary: show 2-bytes hexadecimal integers dump, one per line
+        cname: print_hexdump_hex2l
+        type: RZ_CMD_DESC_TYPE_ARGV_STATE
+        modes:
+          - RZ_OUTPUT_MODE_STANDARD
+          - RZ_OUTPUT_MODE_JSON
+        args:
+          - name: len
+            type: RZ_CMD_ARG_TYPE_RZNUM
+            optional: true
+      - name: pxw
+        summary: show 4-bytes hexadecimal integers dump
+        cname: print_hexdump_hex4
+        type: RZ_CMD_DESC_TYPE_ARGV_STATE
+        modes:
+          - RZ_OUTPUT_MODE_STANDARD
+          - RZ_OUTPUT_MODE_JSON
+        args:
+          - name: len
+            type: RZ_CMD_ARG_TYPE_RZNUM
+            optional: true
+      - name: pxW
+        summary: show 4-bytes hexadecimal integers dump, one per line
+        cname: print_hexdump_hex4l
+        type: RZ_CMD_DESC_TYPE_ARGV_STATE
+        modes:
+          - RZ_OUTPUT_MODE_STANDARD
+          - RZ_OUTPUT_MODE_JSON
+        args:
+          - name: len
+            type: RZ_CMD_ARG_TYPE_RZNUM
+            optional: true
+      - name: pxq
+        summary: show 8-bytes hexadecimal integers dump
+        cname: print_hexdump_hex8
+        type: RZ_CMD_DESC_TYPE_ARGV_STATE
+        modes:
+          - RZ_OUTPUT_MODE_STANDARD
+          - RZ_OUTPUT_MODE_JSON
+        args:
+          - name: len
+            type: RZ_CMD_ARG_TYPE_RZNUM
+            optional: true
+      - name: pxQ
+        summary: show 8-bytes hexadecimal integers dump, one per line
+        cname: print_hexdump_hex8l
+        type: RZ_CMD_DESC_TYPE_ARGV_STATE
+        modes:
+          - RZ_OUTPUT_MODE_STANDARD
+          - RZ_OUTPUT_MODE_JSON
+        args:
+          - name: len
+            type: RZ_CMD_ARG_TYPE_RZNUM
+            optional: true
+      - name: pxo
+        summary: show 1-byte octal integers dump
+        cname: print_hexdump_oct
+        args:
+          - name: len
+            type: RZ_CMD_ARG_TYPE_RZNUM
+            optional: true
+      - name: pxl
+        summary: display <N> lines of hexdump
+        cname: print_hexdump_n_lines
+        type: RZ_CMD_DESC_TYPE_ARGV_STATE
+        modes:
+          - RZ_OUTPUT_MODE_STANDARD
+          - RZ_OUTPUT_MODE_JSON
+        args:
+          - name: N
+            type: RZ_CMD_ARG_TYPE_RZNUM
+            optional: true
+  - name: p6
+    summary: Base64 decoding/encoding
+    subcommands:
+      - name: p6e
+        summary: Base64 encoding
+        cname: cmd_base64_encode
+        modes:
+          - RZ_OUTPUT_MODE_STANDARD
+        args: []
+      - name: p6d
+        summary: Base64 decoding
+        cname: cmd_base64_decode
+        modes:
+          - RZ_OUTPUT_MODE_STANDARD
+        args: []

@@ -136,7 +136,6 @@ static void __printRecursive(RzCore *core, RzList *flags, const char *name, RzOu
 	RzListIter *iter;
 	if (mode == RZ_OUTPUT_MODE_RIZIN && RZ_STR_ISEMPTY(name)) {
 		rz_cons_printf("agn root\n");
-		return;
 	}
 	if (rz_flag_get(core->flags, name)) {
 		return;
@@ -210,8 +209,8 @@ RZ_IPI RzCmdStatus rz_flag_add_handler(RzCore *core, int argc, const char **argv
 	bool addFlag = true;
 	ut64 size = argc > 2 ? rz_num_math(core->num, argv[2]) : 1;
 	if ((item = rz_flag_get_at(core->flags, core->offset, false))) {
-		RZ_LOG_INFO("Cannot create flag \"%s\" at 0x%" PFMT64x
-			    " because there is already \"%s\" flag\n",
+		RZ_LOG_ERROR("Cannot create flag \"%s\" at 0x%" PFMT64x
+			     " because there is already \"%s\" flag\n",
 			argv[1],
 			core->offset, item->name);
 		addFlag = false;
@@ -299,7 +298,11 @@ RZ_IPI RzCmdStatus rz_flag_local_list_all_handler(RzCore *core, int argc, const 
 RZ_IPI RzCmdStatus rz_flag_graph_handler(RzCore *core, int argc, const char **argv, RzCmdStateOutput *state) {
 	RzList *flags = rz_list_newf(NULL);
 	rz_flag_foreach_space(core->flags, rz_flag_space_cur(core->flags), listFlag, flags);
-	__printRecursive(core, flags, argv[1], state->mode, 0);
+	if (!argv[1]) {
+		__printRecursive(core, flags, "", state->mode, 0);
+	} else {
+		__printRecursive(core, flags, argv[1], state->mode, 0);
+	}
 	rz_list_free(flags);
 	return RZ_CMD_STATUS_OK;
 }
@@ -773,8 +776,10 @@ RZ_IPI RzCmdStatus rz_flag_base_handler(RzCore *core, int argc, const char **arg
 RZ_IPI RzCmdStatus rz_flag_exists_handler(RzCore *core, int argc, const char **argv) {
 	RzFlagItem *item = rz_flag_get(core->flags, argv[1]);
 	if (!item) {
+		RZ_LOG_ERROR("Cannot find flag '%s'\n", argv[1]);
 		return RZ_CMD_STATUS_ERROR;
 	}
+	RZ_LOG_DEBUG("Find flag '%s' at 0x%" PFMT64x "\n", argv[1], item->offset);
 	return RZ_CMD_STATUS_OK;
 }
 

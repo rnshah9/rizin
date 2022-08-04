@@ -404,6 +404,7 @@ RZ_API RZ_OWN RzDebug *rz_debug_new(RZ_BORROW RZ_NONNULL RzBreakpointContext *bp
 	dbg->bp->iob.init = false;
 	dbg->bp->baddr = 0;
 	dbg->nt_x86_xstate_supported = true;
+	dbg->hash = rz_hash_new();
 	return dbg;
 }
 
@@ -414,6 +415,7 @@ RZ_API void rz_debug_tracenodes_reset(RzDebug *dbg) {
 
 RZ_API RzDebug *rz_debug_free(RzDebug *dbg) {
 	if (dbg) {
+		rz_hash_free(dbg->hash);
 		rz_bp_free(dbg->bp);
 		free(dbg->snap_path);
 		rz_list_free(dbg->maps);
@@ -817,7 +819,7 @@ RZ_API int rz_debug_step_soft(RzDebug *dbg) {
 	if (!dbg->iob.read_at(dbg->iob.io, pc, buf, sizeof(buf))) {
 		return false;
 	}
-	if (!rz_analysis_op(dbg->analysis, &op, pc, buf, sizeof(buf), RZ_ANALYSIS_OP_MASK_BASIC)) {
+	if (rz_analysis_op(dbg->analysis, &op, pc, buf, sizeof(buf), RZ_ANALYSIS_OP_MASK_BASIC) < 1) {
 		return false;
 	}
 	if (op.type == RZ_ANALYSIS_OP_TYPE_ILL) {
@@ -1075,7 +1077,7 @@ RZ_API int rz_debug_step_over(RzDebug *dbg, int steps) {
 			dbg->iob.read_at(dbg->iob.io, buf_pc, buf, sizeof(buf));
 		}
 		// Analyze the opcode
-		if (!rz_analysis_op(dbg->analysis, &op, pc, buf + (pc - buf_pc), sizeof(buf) - (pc - buf_pc), RZ_ANALYSIS_OP_MASK_BASIC)) {
+		if (rz_analysis_op(dbg->analysis, &op, pc, buf + (pc - buf_pc), sizeof(buf) - (pc - buf_pc), RZ_ANALYSIS_OP_MASK_BASIC) < 1) {
 			eprintf("debug-step-over: Decode error at %" PFMT64x "\n", pc);
 			return steps_taken;
 		}
@@ -1331,11 +1333,9 @@ RZ_API int rz_debug_continue(RzDebug *dbg) {
 	return rz_debug_continue_kill(dbg, 0); // dbg->reason.signum);
 }
 
-#if __WINDOWS__
 RZ_API int rz_debug_continue_pass_exception(RzDebug *dbg) {
-	return rz_debug_continue_kill(dbg, DBG_EXCEPTION_NOT_HANDLED);
+	return rz_debug_continue_kill(dbg, dbg->reason.signum);
 }
-#endif
 
 RZ_API int rz_debug_continue_until_nontraced(RzDebug *dbg) {
 	eprintf("TODO\n");
@@ -1377,7 +1377,7 @@ RZ_API int rz_debug_continue_until_optype(RzDebug *dbg, int type, int over) {
 			dbg->iob.read_at(dbg->iob.io, buf_pc, buf, sizeof(buf));
 		}
 		// Analyze the opcode
-		if (!rz_analysis_op(dbg->analysis, &op, pc, buf + (pc - buf_pc), sizeof(buf) - (pc - buf_pc), RZ_ANALYSIS_OP_MASK_BASIC)) {
+		if (rz_analysis_op(dbg->analysis, &op, pc, buf + (pc - buf_pc), sizeof(buf) - (pc - buf_pc), RZ_ANALYSIS_OP_MASK_BASIC) < 1) {
 			eprintf("Decode error at %" PFMT64x "\n", pc);
 			return false;
 		}

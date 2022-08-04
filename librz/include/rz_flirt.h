@@ -1,11 +1,12 @@
-// SPDX-FileCopyrightText: 2021 RizinOrg <info@rizin.re>
-// SPDX-FileCopyrightText: 2021 deroad <wargio@libero.it>
+// SPDX-FileCopyrightText: 2021-2022 RizinOrg <info@rizin.re>
+// SPDX-FileCopyrightText: 2021-2022 deroad <wargio@libero.it>
 // SPDX-FileCopyrightText: 2014-2016 jfrankowski <jody.frankowski@gmail.com>
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #ifndef RZ_FLIRT_H
 #define RZ_FLIRT_H
 
+#include <rz_types.h>
 #include <rz_list.h>
 #include <rz_analysis.h>
 
@@ -247,7 +248,17 @@ typedef struct rz_signature_database_entry_t {
 	ut32 n_modules; ///< signature number of modules
 } RzSigDBEntry;
 
-RZ_API RZ_OWN RzList /*<RzSigDBEntry>*/ *rz_sign_sigdb_load_database(RZ_NONNULL const char *sigdb_path, bool with_details);
+typedef struct rz_signature_db_t {
+	HtPU *entries;
+} RzSigDb;
+
+RZ_API void rz_sign_sigdb_signature_free(RZ_NULLABLE RzSigDBEntry *entry);
+RZ_API RZ_OWN RzSigDb *rz_sign_sigdb_new(void);
+RZ_API void rz_sign_sigdb_free(RzSigDb *db);
+RZ_API RZ_OWN RzSigDb *rz_sign_sigdb_load_database(RZ_NONNULL const char *sigdb_path, bool with_details);
+RZ_API bool rz_sign_sigdb_add_entry(RZ_NONNULL RzSigDb *db, RZ_NONNULL const RzSigDBEntry *entry);
+RZ_API bool rz_sign_sigdb_merge(RZ_NONNULL RzSigDb *db, RZ_NONNULL RzSigDb *db2);
+RZ_API RZ_OWN RzList /*<RzSigDBEntry *>*/ *rz_sign_sigdb_list(RZ_NONNULL const RzSigDb *db);
 
 #ifdef __cplusplus
 }

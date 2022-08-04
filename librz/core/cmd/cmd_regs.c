@@ -66,6 +66,7 @@ static RzList *filter_reg_items(RzReg *reg, RZ_NULLABLE const char *filter) {
 	if (type >= 0) {
 		return rz_list_clone(reg->regset[type].regs);
 	}
+	// role
 	int role = rz_reg_role_by_name(filter);
 	if (role >= 0) {
 		const char *itemname = rz_reg_get_name(reg, role);
@@ -199,7 +200,7 @@ static const char *get_reg_role_name(RzReg *reg, RzRegItem *item) {
  * \param filter Filter registers
  * \return List of RzRegItem
  */
-RZ_API RZ_OWN RzList *rz_core_reg_filter_items_sync(RZ_NONNULL RzCore *core, RZ_NONNULL RzReg *reg, RzCmdRegSync sync_cb, RZ_NULLABLE const char *filter) {
+RZ_API RZ_OWN RzList /*<RzRegItem *>*/ *rz_core_reg_filter_items_sync(RZ_NONNULL RzCore *core, RZ_NONNULL RzReg *reg, RzCmdRegSync sync_cb, RZ_NULLABLE const char *filter) {
 	rz_return_val_if_fail(core && reg, NULL);
 	RzList *ritems = filter_reg_items(reg, filter);
 	if (!ritems) {
@@ -557,7 +558,7 @@ RZ_IPI RzCmdStatus rz_reg_arenas_hexdump_handler(RzCore *core, RzReg *reg, RzCmd
 	int len = 0;
 	ut8 *buf = rz_reg_get_bytes(reg, t, &len);
 	if (buf) {
-		rz_print_hexdump(core->print, 0LL, buf, len, 32, 4, 1);
+		rz_core_print_hexdump(core, 0LL, buf, len, 32, 4, 1);
 		free(buf);
 	}
 	return RZ_CMD_STATUS_OK;

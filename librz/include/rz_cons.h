@@ -55,7 +55,7 @@ RZ_LIB_VERSION_HEADER(rz_cons);
 #define RZ_CONS_CMD_DEPTH 100
 
 typedef int (*RzConsGetSize)(int *rows);
-typedef int (*RzConsGetCursor)(int *rows);
+typedef int (*RzConsGetCursor)(RZ_NONNULL int *rows);
 typedef bool (*RzConsIsBreaked)(void);
 typedef void (*RzConsFlush)(void);
 typedef void (*RzConsGrepCallback)(const char *grep);
@@ -246,6 +246,7 @@ typedef struct rz_cons_palette_t {
 	RzColor func_var_addr;
 	RzColor widget_bg;
 	RzColor widget_sel;
+	RzColor meta;
 
 	/* Graph colors */
 	RzColor graph_box;
@@ -322,6 +323,7 @@ typedef struct rz_cons_printable_palette_t {
 	char *func_var_addr;
 	char *widget_bg;
 	char *widget_sel;
+	char *meta;
 
 	/* graph colors */
 	char *graph_box;
@@ -487,6 +489,11 @@ typedef struct rz_cons_context_t {
 	int color_mode;
 	RzConsPalette cpal;
 	RzConsPrintablePalette pal;
+
+	// Memoized last calculated row/column inside buffer
+	int row;
+	int col;
+	int rowcol_calc_start;
 } RzConsContext;
 
 #define HUD_BUF_SIZE 512
@@ -529,6 +536,7 @@ typedef struct rz_cons_t {
 	struct termios term_raw, term_buf;
 #elif __WINDOWS__
 	unsigned long term_raw, term_buf, term_xterm;
+	unsigned long old_input_mode, old_output_mode;
 	ut32 old_cp;
 	ut32 old_ocp;
 #endif
@@ -802,10 +810,8 @@ RZ_API void rz_cons_canvas_clear(RzConsCanvas *c);
 RZ_API void rz_cons_canvas_print(RzConsCanvas *c);
 RZ_API void rz_cons_canvas_print_region(RzConsCanvas *c);
 RZ_API RZ_OWN char *rz_cons_canvas_to_string(RzConsCanvas *c);
-RZ_API void rz_cons_canvas_attr(RzConsCanvas *c, const char *attr);
 RZ_API void rz_cons_canvas_write(RzConsCanvas *c, const char *_s);
 RZ_API bool rz_cons_canvas_gotoxy(RzConsCanvas *c, int x, int y);
-RZ_API void rz_cons_canvas_goto_write(RzConsCanvas *c, int x, int y, const char *s);
 RZ_API void rz_cons_canvas_box(RzConsCanvas *c, int x, int y, int w, int h, const char *color);
 RZ_API void rz_cons_canvas_line(RzConsCanvas *c, int x, int y, int x2, int y2, RzCanvasLineStyle *style);
 RZ_API void rz_cons_canvas_line_diagonal(RzConsCanvas *c, int x, int y, int x2, int y2, RzCanvasLineStyle *style);
@@ -833,7 +839,7 @@ RZ_API void rz_cons_sleep_end(void *user);
 RZ_API void rz_cons_break_push(RzConsBreak cb, void *user);
 RZ_API void rz_cons_break_pop(void);
 RZ_API void rz_cons_break_clear(void);
-RZ_API void rz_cons_breakword(const char *s);
+RZ_API void rz_cons_breakword(RZ_NULLABLE const char *s);
 RZ_API void rz_cons_break_end(void);
 RZ_API void rz_cons_break_timeout(int timeout);
 
@@ -852,7 +858,6 @@ RZ_API int rz_cons_win_vhprintf(unsigned long hdl, bool vmode, const char *fmt, 
 #endif
 
 RZ_API void rz_cons_push(void);
-RZ_API void rz_cons_push_capture(void);
 RZ_API void rz_cons_pop(void);
 RZ_API RzConsContext *rz_cons_context_new(RZ_NULLABLE RzConsContext *parent);
 RZ_API void rz_cons_context_free(RzConsContext *context);
@@ -875,8 +880,6 @@ RZ_API void rz_cons_clear_buffer(void);
 RZ_API void rz_cons_clear00(void);
 RZ_API void rz_cons_clear_line(int err);
 RZ_API void rz_cons_fill_line(void);
-RZ_API void rz_cons_stdout_open(const char *file, int append);
-RZ_API int rz_cons_stdout_set_fd(int fd);
 RZ_API void rz_cons_gotoxy(int x, int y);
 RZ_API int rz_cons_get_cur_line(void);
 RZ_API void rz_cons_show_cursor(int cursor);
@@ -911,8 +914,6 @@ RZ_API void rz_cons_visual_flush(void);
 RZ_API void rz_cons_visual_write(char *buffer);
 RZ_API bool rz_cons_is_utf8(void);
 RZ_API void rz_cons_cmd_help(const char *help[], bool use_color);
-RZ_API void rz_cons_log_stub(const char *output, const char *funcname, const char *filename,
-	unsigned int lineno, unsigned int level, const char *tag, const char *fmtstr, ...) RZ_PRINTF_CHECK(7, 8);
 
 /* input */
 RZ_API int rz_cons_controlz(int ch);
@@ -925,7 +926,6 @@ RZ_API int rz_cons_readchar_timeout(ut32 usec);
 RZ_API int rz_cons_any_key(const char *msg);
 RZ_API int rz_cons_eof(void);
 
-RZ_API int rz_cons_palette_init(const unsigned char *pal);
 RZ_API int rz_cons_pal_set(const char *key, const char *val);
 RZ_API void rz_cons_pal_update_event(void);
 RZ_API void rz_cons_pal_free(RzConsContext *ctx);
@@ -943,7 +943,7 @@ RZ_API void rz_cons_pal_list(int rad, const char *arg);
 RZ_API void rz_cons_pal_show(void);
 RZ_API int rz_cons_get_size(int *rows);
 RZ_API bool rz_cons_isatty(void);
-RZ_API int rz_cons_get_cursor(int *rows);
+RZ_API int rz_cons_get_cursor(RZ_NONNULL int *rows);
 RZ_API int rz_cons_arrow_to_hjkl(int ch);
 RZ_API char *rz_cons_html_filter(const char *ptr, int *newlen);
 RZ_API char *rz_cons_rainbow_get(int idx, int last, bool bg);
@@ -951,7 +951,7 @@ RZ_API void rz_cons_rainbow_free(RzConsContext *ctx);
 RZ_API void rz_cons_rainbow_new(RzConsContext *ctx, int sz);
 
 RZ_API int rz_cons_fgets(char *buf, int len, int argc, const char **argv);
-RZ_API char *rz_cons_hud(RzList *list, const char *prompt);
+RZ_API char *rz_cons_hud(RzList /*<char *>*/ *list, const char *prompt);
 RZ_API char *rz_cons_hud_path(const char *path, int dir);
 RZ_API char *rz_cons_hud_string(const char *s);
 RZ_API char *rz_cons_hud_file(const char *f);
@@ -966,7 +966,6 @@ RZ_API void rz_cons_grep_process(char *grep);
 RZ_API int rz_cons_grep_line(char *buf, int len); // must be static
 RZ_API void rz_cons_grepbuf(void);
 
-RZ_API void rz_cons_rgb(ut8 r, ut8 g, ut8 b, ut8 a);
 RZ_API void rz_cons_rgb_init(void);
 RZ_API char *rz_cons_rgb_str_mode(RzConsColorMode mode, char *outstr, size_t sz, const RzColor *rcolor);
 RZ_API char *rz_cons_rgb_str(char *outstr, size_t sz, const RzColor *rcolor);
@@ -1142,8 +1141,6 @@ RZ_API const char *rz_line_readline_cb(RzLineReadCallback cb, void *user);
 RZ_API int rz_line_hist_load(RZ_NONNULL const char *file);
 RZ_API int rz_line_hist_add(const char *line);
 RZ_API int rz_line_hist_save(RZ_NONNULL const char *file);
-RZ_API int rz_line_hist_label(const char *label, void (*cb)(const char *));
-RZ_API void rz_line_label_show(void);
 RZ_API int rz_line_hist_list(void);
 RZ_API const char *rz_line_hist_get(int n);
 

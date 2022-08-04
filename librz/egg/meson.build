@@ -1,8 +1,12 @@
-egg_plugins = [
-  'exec',
-  #'shya',
-  'xor'
-]
+egg_plugins = {
+  'conf_name': 'plugins_egg',
+  'base_cname': 'rz_egg_plugin_',
+  'list': [
+    'exec',
+    #'shya',
+    'xor'
+  ],
+}
 
 rz_egg_sources = [
   'egg.c',
@@ -22,7 +26,6 @@ rz_egg_sources = [
 
 rz_egg = library('rz_egg', rz_egg_sources,
   include_directories: [platform_inc],
-  c_args: library_cflags,
   dependencies: [
     rz_util_dep,
     rz_syscall_dep,
@@ -32,7 +35,6 @@ rz_egg = library('rz_egg', rz_egg_sources,
   install: true,
   implicit_include_directories: false,
   install_rpath: rpath_lib,
-  link_args: library_linkflags,
   soversion: rizin_libversion,
   version: rizin_version,
   name_suffix: lib_name_suffix,

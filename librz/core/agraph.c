@@ -3798,7 +3798,7 @@ RZ_API bool rz_agraph_del_node(const RzAGraph *g, const char *title) {
 	return true;
 }
 
-static bool user_node_cb(struct g_cb *user, const void *k UNUSED, const void *v) {
+static bool user_node_cb(struct g_cb *user, RZ_UNUSED const void *k, const void *v) {
 	RzANodeCallback cb = user->node_cb;
 	void *user_data = user->data;
 	RzANode *n = (RzANode *)v;
@@ -3808,7 +3808,7 @@ static bool user_node_cb(struct g_cb *user, const void *k UNUSED, const void *v)
 	return true;
 }
 
-static bool user_edge_cb(struct g_cb *user, const void *k UNUSED, const void *v) {
+static bool user_edge_cb(struct g_cb *user, RZ_UNUSED const void *k, const void *v) {
 	RAEdgeCallback cb = user->edge_cb;
 	RzAGraph *g = user->graph;
 	void *user_data = user->data;
@@ -4576,12 +4576,21 @@ RZ_API int rz_core_visual_graph(RzCore *core, RzAGraph *g, RzAnalysisFunction *_
 				mousemode = 3;
 			}
 			break;
-		case '(':
-			if (fcn) {
-				rz_core_cmd0(core, "wao recj@B:-1");
-				g->need_reload_nodes = true;
+		case '(': {
+			if (!fcn) {
+				break;
 			}
+			if (!rz_core_seek_bb_instruction(core, -1)) {
+				break;
+			}
+			ut64 oldseek = core->offset;
+			core->tmpseek = true;
+			rz_core_hack(core, "recj");
+			core->tmpseek = false;
+			rz_core_seek(core, oldseek, true);
+			g->need_reload_nodes = true;
 			break;
+		}
 		case ')':
 			if (fcn) {
 				rotateAsmemu(core);
@@ -4904,7 +4913,7 @@ RZ_API int rz_core_visual_graph(RzCore *core, RzAGraph *g, RzAnalysisFunction *_
  * @param graph <RzGraphNodeInfo>
  * @return RzAGraph* NULL if failure
  */
-RZ_API RzAGraph *create_agraph_from_graph(const RzGraph /*<RzGraphNodeInfo>*/ *graph) {
+RZ_API RzAGraph *create_agraph_from_graph(const RzGraph /*<RzGraphNodeInfo *>*/ *graph) {
 	rz_return_val_if_fail(graph, NULL);
 
 	RzAGraph *result_agraph = rz_agraph_new(rz_cons_canvas_new(1, 1));

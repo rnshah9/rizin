@@ -1,4 +1,4 @@
-parse_plugins = [
+parse_plugins_list = [
   '6502_pseudo',
   'arm_pseudo',
   'att2intel',
@@ -13,14 +13,19 @@ parse_plugins = [
   'wasm_pseudo',
   'x86_pseudo',
 ]
-
 if get_option('use_gpl')
-  parse_plugins += [
+  parse_plugins_list += [
     'sh_pseudo',
     'riscv_pseudo',
     'z80_pseudo'
   ]
 endif
+
+parse_plugins = {
+  'conf_name': 'plugins_parse',
+  'base_cname': 'rz_parse_plugin_',
+  'list': parse_plugins_list,
+}
 
 rz_parse_sources = [
   'filter.c',
@@ -45,7 +50,6 @@ rz_parse_sources = [
 
 rz_parse = library('rz_parse', rz_parse_sources,
   include_directories: platform_inc,
-  c_args: library_cflags,
   dependencies: [
     rz_util_dep,
     rz_flag_dep,
@@ -56,7 +60,6 @@ rz_parse = library('rz_parse', rz_parse_sources,
   install: true,
   implicit_include_directories: false,
   install_rpath: rpath_lib,
-  link_args: library_linkflags,
   soversion: rizin_libversion,
   version: rizin_version,
   name_suffix: lib_name_suffix,

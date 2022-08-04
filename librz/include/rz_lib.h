@@ -79,7 +79,7 @@ typedef enum {
 	RZ_LIB_TYPE_SYSCALL, /* syscall */
 	RZ_LIB_TYPE_FASTCALL, /* fastcall */
 	RZ_LIB_TYPE_CRYPTO, /* cryptography */
-	RZ_LIB_TYPE_MD, /* message digests */
+	RZ_LIB_TYPE_HASH, /* hashes / message digests */
 	RZ_LIB_TYPE_CORE, /* RzCore commands */
 	RZ_LIB_TYPE_EGG, /* rz_egg plugin */
 	RZ_LIB_TYPE_DEMANGLER, /* demanglers */
@@ -119,7 +119,6 @@ RZ_API bool rz_lib_add_handler(RzLib *lib, int type, const char *desc, RzLibCall
 RZ_API bool rz_lib_del_handler(RzLib *lib, int type);
 RZ_API int rz_lib_close(RzLib *lib, const char *file);
 
-RZ_API const char *rz_lib_types_get(int idx);
 RZ_API int rz_lib_types_get_i(const char *str);
 #endif
 

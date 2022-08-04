@@ -38,6 +38,12 @@ typedef struct {
 
 static void cons_grep_reset(RzConsGrep *grep);
 
+static void ctx_rowcol_calc_reset(void) {
+	CTX(row) = 0;
+	CTX(col) = 0;
+	CTX(rowcol_calc_start) = 0;
+}
+
 static void break_stack_free(void *ptr) {
 	RzConsBreakStack *b = (RzConsBreakStack *)ptr;
 	free(b);
@@ -72,6 +78,7 @@ static RzConsStack *cons_stack_dump(bool recreate) {
 		}
 		if (recreate && CTX(buffer_sz) > 0) {
 			CTX(buffer) = malloc(CTX(buffer_sz));
+			ctx_rowcol_calc_reset();
 			if (!CTX(buffer)) {
 				CTX(buffer) = data->buf;
 				free(data);
@@ -98,6 +105,7 @@ static void cons_stack_load(RzConsStack *data, bool free_current) {
 		memcpy(&CTX(grep), data->grep, sizeof(RzConsGrep));
 	}
 	CTX(noflush) = data->noflush;
+	ctx_rowcol_calc_reset();
 }
 
 static void cons_context_init(RzConsContext *context, RZ_NULLABLE RzConsContext *parent) {
@@ -446,7 +454,6 @@ RZ_API void rz_cons_sleep_end(void *user) {
 }
 
 #if __WINDOWS__
-static HANDLE h;
 static BOOL __w32_control(DWORD type) {
 	if (type == CTRL_C_EVENT) {
 		__break_signal(2); // SIGINT
@@ -542,12 +549,37 @@ static void set_console_codepage_to_utf8(void) {
 	}
 }
 
-static void restore_console_codepage(void) {
-	if (!SetConsoleCP(I.old_cp)) {
-		rz_sys_perror("SetConsoleCP");
+static void save_console_state(void) {
+	if (rz_cons_isatty()) {
+		if (!(I.old_ocp = GetConsoleOutputCP())) {
+			rz_sys_perror("GetConsoleOutputCP");
+		}
+		if (!(I.old_cp = GetConsoleCP())) {
+			rz_sys_perror("GetConsoleCP");
+		}
+		if (!GetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), &I.old_output_mode)) {
+			rz_sys_perror("GetConsoleMode");
+		}
+		if (!GetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), &I.old_input_mode)) {
+			rz_sys_perror("GetConsoleCP");
+		}
 	}
-	if (!SetConsoleOutputCP(I.old_ocp)) {
-		rz_sys_perror("SetConsoleOutputCP");
+}
+
+static void restore_console_state(void) {
+	if (rz_cons_isatty()) {
+		if (!SetConsoleCP(I.old_cp)) {
+			rz_sys_perror("SetConsoleCP");
+		}
+		if (!SetConsoleOutputCP(I.old_ocp)) {
+			rz_sys_perror("SetConsoleOutputCP");
+		}
+		if (!SetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), I.old_output_mode)) {
+			rz_sys_perror("SetConsoleMode");
+		}
+		if (!SetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), I.old_input_mode)) {
+			rz_sys_perror("SetConsoleMode");
+		}
 	}
 }
 #endif
@@ -588,8 +620,7 @@ RZ_API RzCons *rz_cons_new(void) {
 	I.num = NULL;
 	I.null = 0;
 #if __WINDOWS__
-	I.old_cp = GetConsoleCP();
-	I.old_ocp = GetConsoleOutputCP();
+	save_console_state();
 	I.vtmode = rz_cons_detect_vt_mode();
 	set_console_codepage_to_utf8();
 #else
@@ -607,9 +638,7 @@ RZ_API RzCons *rz_cons_new(void) {
 	I.term_raw.c_cc[VMIN] = 1; // Solaris stuff hehe
 	rz_sys_signal(SIGWINCH, resize);
 #elif __WINDOWS__
-	h = GetStdHandle(STD_INPUT_HANDLE);
-	GetConsoleMode(h, &I.term_buf);
-	I.term_buf |= ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT;
+	I.term_buf = I.old_input_mode | ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT;
 	I.term_raw = ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT);
 	if (!SetConsoleCtrlHandler((PHANDLER_ROUTINE)__w32_control, TRUE)) {
 		eprintf("rz_cons: Cannot set control console handler\n");
@@ -635,8 +664,7 @@ RZ_API RzCons *rz_cons_free(void) {
 		return &I;
 	}
 #if __WINDOWS__
-	rz_cons_enable_mouse(false);
-	restore_console_codepage();
+	restore_console_state();
 #endif
 	if (I.line) {
 		rz_line_free();
@@ -782,6 +810,7 @@ RZ_API void rz_cons_reset(void) {
 	I.lastline = CTX(buffer);
 	cons_grep_reset(&CTX(grep));
 	CTX(pageable) = true;
+	ctx_rowcol_calc_reset();
 }
 
 /**
@@ -795,7 +824,7 @@ RZ_API const char *rz_cons_get_buffer(void) {
 /**
  * \brief Return a newly allocated buffer containing what's currently in RzCons buffer
  */
-RZ_API char *rz_cons_get_buffer_dup(void) {
+RZ_API RZ_OWN char *rz_cons_get_buffer_dup(void) {
 	const char *s = rz_cons_get_buffer();
 	return s ? strdup(s) : NULL;
 }
@@ -819,6 +848,7 @@ RZ_API void rz_cons_filter(void) {
 		CTX(buffer) = res;
 		CTX(buffer_len) = newlen;
 		CTX(buffer_sz) = newlen;
+		ctx_rowcol_calc_reset();
 		free(input);
 	}
 	if (I.was_html) {
@@ -1260,38 +1290,51 @@ now the console color is reset with each \n (same stuff do it here but in correc
 #endif
 }
 
-/* return the aproximated x,y of cursor before flushing */
-// XXX this function is a huge bottleneck
-RZ_API int rz_cons_get_cursor(int *rows) {
-	int i, col = 0;
-	int row = 0;
-	// TODO: we need to handle GOTOXY and CLRSCR ansi escape code too
-	for (i = 0; i < CTX(buffer_len); i++) {
+/**
+ * \brief Calculates the aproximated x,y coordinates of the cursor before flushing
+ * \param[out] rows Row number of the cursor
+ * \return Column number of the cursor
+ */
+RZ_API int rz_cons_get_cursor(RZ_NONNULL int *rows) {
+	rz_return_val_if_fail(rows, 0);
+	int col = CTX(col);
+	int row = CTX(row);
+	if (CTX(rowcol_calc_start) > CTX(buffer_len)) {
+		rz_warn_if_reached();
+		CTX(rowcol_calc_start) = 0;
+	}
+	if (!CTX(buffer)) {
+		*rows = 0;
+		return 0;
+	}
+	const char *last_line = CTX(buffer) + CTX(rowcol_calc_start);
+	const char *ptr;
+	while ((ptr = strchr(last_line, '\n'))) {
+		last_line = ++ptr;
+		row++;
+	};
+	const char *last_escape = last_line;
+	while ((ptr = strchr(last_escape, '\x1b'))) {
 		// ignore ansi chars, copypasta from rz_str_ansi_len
-		if (CTX(buffer)[i] == 0x1b) {
-			char ch2 = CTX(buffer)[i + 1];
-			char *str = CTX(buffer);
-			if (ch2 == '\\') {
-				i++;
-			} else if (ch2 == ']') {
-				if (!strncmp(str + 2 + 5, "rgb:", 4)) {
-					i += 18;
-				}
-			} else if (ch2 == '[') {
-				for (++i; str[i] && str[i] != 'J' && str[i] != 'm' && str[i] != 'H'; i++) {
-					;
-				}
+		col += ptr - last_escape;
+		char ch2 = *++ptr;
+		if (ch2 == '\\') {
+			ptr++;
+		} else if (ch2 == ']') {
+			if (!strncmp(ptr + 2 + 5, "rgb:", 4)) {
+				ptr += 18;
 			}
-		} else if (CTX(buffer)[i] == '\n') {
-			row++;
-			col = 0;
-		} else {
-			col++;
+		} else if (ch2 == '[') {
+			for (++ptr; *ptr && *ptr != 'J' && *ptr != 'm' && *ptr != 'H'; ptr++) {
+				;
+			}
 		}
+		last_escape = ptr;
 	}
-	if (rows) {
-		*rows = row;
-	}
+	*rows = row;
+	CTX(row) = row;
+	CTX(col) = col;
+	CTX(rowcol_calc_start) = CTX(buffer_len);
 	return col;
 }
 
@@ -1318,6 +1361,11 @@ RZ_API bool rz_cons_isatty(void) {
 		return false;
 	}
 	return true;
+#elif __WINDOWS__
+	HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+	if (GetFileType(hOut) == FILE_TYPE_CHAR) {
+		return true;
+	}
 #endif
 	/* non-UNIX do not have ttys */
 	return false;
@@ -1585,6 +1633,7 @@ RZ_API void rz_cons_set_raw(bool is_raw) {
 	}
 #elif __WINDOWS__
 	DWORD mode;
+	HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
 	GetConsoleMode(h, &mode);
 	if (is_raw) {
 		if (I.term_xterm) {
@@ -1753,6 +1802,7 @@ RZ_API void rz_cons_highlight(const char *word) {
 		free(rword);
 		free(clean);
 		free(cpos);
+		ctx_rowcol_calc_reset();
 		/* don't free orig - it's assigned
 		 * to CTX(buffer) and possibly realloc'd */
 	} else {

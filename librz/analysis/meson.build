@@ -1,4 +1,4 @@
-analysis_plugins = [
+analysis_plugins_list = [
   '6502',
   '8051',
   'amd29k',
@@ -6,6 +6,7 @@ analysis_plugins = [
   'avr',
   'bf',
   'chip8',
+  'cil',
   'cr16',
   'dalvik',
   'ebc',
@@ -42,13 +43,12 @@ analysis_plugins = [
   'xap',
   'xcore_cs',
 ]
-
 if capstone_dep.version().split('.')[0].to_int() > 4
-  analysis_plugins += 'riscv_cs'
+  analysis_plugins_list += 'riscv_cs'
 endif
 
 if get_option('use_gpl')
-  analysis_plugins += [
+  analysis_plugins_list += [
     'arc',
     'cris',
     'mips_gnu',
@@ -63,10 +63,14 @@ if get_option('use_gpl')
   ]
 endif
 
+analysis_plugins = {
+  'conf_name': 'plugins_analysis',
+  'base_cname': 'rz_analysis_plugin_',
+  'list': analysis_plugins_list,
+}
+
 rz_analysis_sources = [
   'analysis.c',
-  'arch_platform.c',
-  'arch_profile.c',
   'block.c',
   'cc.c',
   'class.c',
@@ -83,17 +87,19 @@ rz_analysis_sources = [
   'fcn.c',
   'function.c',
   'hint.c',
+  'il/analysis_il.c',
+  'il/analysis_il_trace.c',
   'il_trace.c',
   'jmptbl.c',
   'labels.c',
   'meta.c',
   'op.c',
+  'platform_profile.c',
+  'platform_target_index.c',
   'reflines.c',
   'rtti.c',
   'rtti_itanium.c',
   'rtti_msvc.c',
-  'il/analysis_il.c',
-  'il/analysis_il_trace.c',
   'serialize_analysis.c',
   'serialize_typelink.c',
   'switch.c',
@@ -111,6 +117,7 @@ rz_analysis_sources = [
   'p/analysis_avr.c',
   'p/analysis_bf.c',
   'p/analysis_chip8.c',
+  'p/analysis_cil.c',
   'p/analysis_cr16.c',
   'p/analysis_dalvik.c',
   'p/analysis_ebc.c',
@@ -154,8 +161,10 @@ rz_analysis_sources = [
   'arch/avr/avr_il.c',
   'arch/arm/arm_il32.c',
   'arch/arm/arm_il64.c',
+  'arch/sh/sh_il.c',
   '../asm/arch/amd29k/amd29k.c',
   '../asm/arch/avr/disassembler.c',
+  '../asm/arch/cil/cil_dis.c',
   '../asm/arch/cr16/cr16_disas.c',
   '../asm/arch/ebc/ebc_disas.c',
   '../asm/arch/h8300/h8300_disas.c',
@@ -167,6 +176,8 @@ rz_analysis_sources = [
   '../asm/arch/ppc/libvle/vle.c',
   '../asm/arch/propeller/propeller_disas.c',
   '../asm/arch/rsp/rsp_idec.c',
+  '../asm/arch/sh/disassembler.c',
+  '../asm/arch/sh/lookup.c',
   '../asm/arch/tms320/tms320_dasm.c',
   '../asm/arch/tms320/c55x_plus/ins.c',
   '../asm/arch/tms320/c55x_plus/c55plus.c',
@@ -247,7 +258,6 @@ rz_analysis_inc = [
 
 rz_analysis = library('rz_analysis', rz_analysis_sources,
   include_directories: rz_analysis_inc,
-  c_args: library_cflags,
   dependencies: [
     rz_util_dep,
     rz_crypto_dep,
@@ -268,7 +278,6 @@ rz_analysis = library('rz_analysis', rz_analysis_sources,
   install: true,
   implicit_include_directories: false,
   install_rpath: rpath_lib,
-  link_args: library_linkflags,
   soversion: rizin_libversion,
   version: rizin_version,
   name_suffix: lib_name_suffix,

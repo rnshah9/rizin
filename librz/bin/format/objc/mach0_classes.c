@@ -134,7 +134,6 @@ static mach0_ut va2pa(mach0_ut p, ut32 *offset, ut32 *left, RzBinFile *bf) {
 	mach0_ut r;
 	mach0_ut addr;
 
-	static RzList *sctns = NULL;
 	RzListIter *iter = NULL;
 	RzBinSection *s = NULL;
 	RzBinObject *obj = bf->o;
@@ -144,6 +143,7 @@ static mach0_ut va2pa(mach0_ut p, ut32 *offset, ut32 *left, RzBinFile *bf) {
 		return bin->va2pa(p, offset, left, bf);
 	}
 
+	const RzList *sctns = bin->sections_cache;
 	if (!sctns) {
 		sctns = rz_bin_plugin_mach.sections(bf);
 		if (!sctns) {
@@ -1124,7 +1124,7 @@ static mach0_ut get_isa_value(void) {
 	return 0;
 }
 
-void MACH0_(get_class_t)(mach0_ut p, RzBinFile *bf, RzBuffer *buf, RzBinClass *klass, bool dupe, RzSkipList *relocs, objc_cache_opt_info *oi) {
+RZ_API void MACH0_(get_class_t)(mach0_ut p, RzBinFile *bf, RzBuffer *buf, RzBinClass *klass, bool dupe, RzSkipList *relocs, objc_cache_opt_info *oi) {
 	struct MACH0_(SClass) c = { 0 };
 	const int size = sizeof(struct MACH0_(SClass));
 	mach0_ut r = 0;
@@ -1240,7 +1240,7 @@ static RzList *parse_swift_classes(RzBinFile *bf) {
 }
 #endif
 
-RzList *MACH0_(parse_classes)(RzBinFile *bf, objc_cache_opt_info *oi) {
+RZ_API RzList *MACH0_(parse_classes)(RzBinFile *bf, objc_cache_opt_info *oi) {
 	RzList /*<RzBinClass>*/ *ret = NULL;
 	ut64 num_of_unnamed_class = 0;
 	RzBinClass *klass = NULL;
@@ -1442,7 +1442,7 @@ error:
 	return NULL;
 }
 
-void MACH0_(get_category_t)(mach0_ut p, RzBinFile *bf, RzBuffer *buf, RzBinClass *klass, RzSkipList *relocs, objc_cache_opt_info *oi) {
+RZ_API void MACH0_(get_category_t)(mach0_ut p, RzBinFile *bf, RzBuffer *buf, RzBinClass *klass, RzSkipList *relocs, objc_cache_opt_info *oi) {
 	rz_return_if_fail(bf && bf->o && bf->o->info);
 
 	struct MACH0_(SCategory) c = { 0 };

@@ -1,11 +1,15 @@
-bp_plugins = [
-  'arm',
-  'bf',
-  'mips',
-  'ppc',
-  'sh',
-  'x86'
-]
+bp_plugins = {
+  'conf_name': 'plugins_bp',
+  'base_cname': 'rz_bp_plugin_',
+  'list': [
+    'arm',
+    'bf',
+    'mips',
+    'ppc',
+    'sh',
+    'x86'
+  ],
+}
 
 rz_bp_sources = [
   'bp.c',
@@ -24,12 +28,10 @@ rz_bp_sources = [
 
 rz_bp = library('rz_bp', rz_bp_sources,
   include_directories: [platform_inc],
-  c_args: library_cflags,
   dependencies: [rz_util_dep],
   install: true,
   implicit_include_directories: false,
   install_rpath: rpath_lib,
-  link_args: library_linkflags,
   soversion: rizin_libversion,
   version: rizin_version,
   name_suffix: lib_name_suffix,

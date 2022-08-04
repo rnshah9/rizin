@@ -462,11 +462,14 @@ static int cmp(const void *a, const void *b) {
 
 RZ_API void rz_cons_grepbuf(void) {
 	RzCons *cons = rz_cons_singleton();
+	cons->context->row = 0;
+	cons->context->col = 0;
+	cons->context->rowcol_calc_start = 0;
 	const char *buf = cons->context->buffer;
 	const int len = cons->context->buffer_len;
 	RzConsGrep *grep = &cons->context->grep;
 	const char *in = buf;
-	int ret, total_lines = 0, buffer_len = 0, l = 0, tl = 0;
+	int ret, total_lines = 0, l = 0, tl = 0;
 	bool show = false;
 	if (cons->filter) {
 		cons->context->buffer_len = 0;
@@ -498,8 +501,28 @@ RZ_API void rz_cons_grepbuf(void) {
 	}
 	if (grep->json) {
 		if (grep->json_path) {
-			char *u = sdb_json_get_str(cons->context->buffer, grep->json_path);
-			if (u) {
+			RzJson *json = rz_json_parse(cons->context->buffer);
+			if (!json) {
+				RZ_FREE(grep->json_path);
+				return;
+			}
+			const RzJson *excerpt;
+			// To simplify grep syntax we omit brackets in `[0]` for JSON paths
+			if (*grep->json_path != '[' && *grep->json_path != '.') {
+				char *tmppath = rz_str_newf("[%s]", grep->json_path);
+				excerpt = rz_json_get_path(json, tmppath);
+				free(tmppath);
+			} else {
+				excerpt = rz_json_get_path(json, grep->json_path);
+			}
+			if (excerpt) {
+				// When we receive the path, it's fetched with the key name
+				// We should get only the value
+				char *u = rz_json_as_string(excerpt, false);
+				if (!u) {
+					RZ_FREE(grep->json_path);
+					return;
+				}
 				cons->context->buffer = u;
 				cons->context->buffer_len = strlen(u);
 				cons->context->buffer_sz = cons->context->buffer_len + 1;
@@ -648,7 +671,6 @@ RZ_API void rz_cons_grepbuf(void) {
 						rz_strbuf_append(ob, str);
 						rz_strbuf_append(ob, "\n");
 					}
-					buffer_len += ret + 1;
 					free(str);
 				}
 				if (!grep->range_line) {

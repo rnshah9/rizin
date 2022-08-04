@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #include <ht_uu.h>
+#include <rz_asm.h>
 #include <rz_core.h>
 #include <rz_io.h>
 #include <rz_list.h>
@@ -213,7 +214,7 @@ static int search_hash(RzCore *core, const char *hashname, const char *hashstr, 
 				if (rz_cons_is_breaked()) {
 					break;
 				}
-				char *s = rz_msg_digest_calculate_small_block_string(hashname, buf + i, len, NULL, false);
+				char *s = rz_hash_cfg_calculate_small_block_string(core->hash, hashname, buf + i, len, NULL, false);
 				if (!s) {
 					eprintf("Hash fail\n");
 					break;
@@ -573,7 +574,7 @@ static bool maskMatches(int perm, int mask, bool only) {
 	return false;
 }
 
-RZ_API RZ_OWN RzList *rz_core_get_boundaries_prot(RzCore *core, int perm, const char *mode, const char *prefix) {
+RZ_API RZ_OWN RzList /*<RzIOMap *>*/ *rz_core_get_boundaries_prot(RzCore *core, int perm, const char *mode, const char *prefix) {
 	rz_return_val_if_fail(core, NULL);
 
 	RzList *list = rz_list_newf(free); // XXX rz_io_map_free);
@@ -1121,11 +1122,9 @@ ret:
 }
 
 static void print_rop(RzCore *core, RzList *hitlist, PJ *pj, int mode) {
-	const char *otype;
 	RzCoreAsmHit *hit = NULL;
 	RzListIter *iter;
 	RzList *ropList = NULL;
-	char *buf_asm = NULL;
 	unsigned int size = 0;
 	RzAnalysisOp analop = RZ_EMPTY;
 	RzAsmOp asmop;
@@ -1204,10 +1203,10 @@ static void print_rop(RzCore *core, RzList *hitlist, PJ *pj, int mode) {
 			if (esil) {
 				rz_cons_printf("%s\n", opstr);
 			} else if (colorize) {
-				buf_asm = rz_print_colorize_opcode(core->print, rz_asm_op_get_asm(&asmop),
-					core->cons->context->pal.reg, core->cons->context->pal.num, false, 0);
-				rz_cons_printf(" %s%s;", buf_asm, Color_RESET);
-				free(buf_asm);
+				RzStrBuf *colored_asm, *bw_str = rz_strbuf_new(rz_asm_op_get_asm(&asmop));
+				colored_asm = rz_asm_colorize_asm_str(bw_str, core->print, rz_asm_get_parse_param(core->analysis->reg, analop.type), asmop.asm_toks);
+				rz_cons_printf(" %s%s;", rz_strbuf_get(colored_asm), Color_RESET);
+				rz_strbuf_free(colored_asm);
 			} else {
 				rz_cons_printf(" %s;", rz_asm_op_get_asm(&asmop));
 			}
@@ -1245,17 +1244,16 @@ static void print_rop(RzCore *core, RzList *hitlist, PJ *pj, int mode) {
 			}
 			char *asm_op_hex = rz_asm_op_get_hex(&asmop);
 			if (colorize) {
-				char *buf_asm = rz_print_colorize_opcode(core->print, rz_asm_op_get_asm(&asmop),
-					core->cons->context->pal.reg, core->cons->context->pal.num, false, 0);
-				otype = rz_print_color_op_type(core->print, analop.type);
+				RzStrBuf *colored_asm, *bw_str = rz_strbuf_new(rz_asm_op_get_asm(&asmop));
+				colored_asm = rz_asm_colorize_asm_str(bw_str, core->print, rz_asm_get_parse_param(core->analysis->reg, analop.type), asmop.asm_toks);
 				if (comment) {
-					rz_cons_printf("  0x%08" PFMT64x " %18s%s  %s%s ; %s\n",
-						hit->addr, asm_op_hex, otype, buf_asm, Color_RESET, comment);
+					rz_cons_printf("  0x%08" PFMT64x " %18s  %s%s ; %s\n",
+						hit->addr, asm_op_hex, rz_strbuf_get(colored_asm), Color_RESET, comment);
 				} else {
-					rz_cons_printf("  0x%08" PFMT64x " %18s%s  %s%s\n",
-						hit->addr, asm_op_hex, otype, buf_asm, Color_RESET);
+					rz_cons_printf("  0x%08" PFMT64x " %18s  %s%s\n",
+						hit->addr, asm_op_hex, rz_strbuf_get(colored_asm), Color_RESET);
 				}
-				free(buf_asm);
+				rz_strbuf_free(colored_asm);
 			} else {
 				if (comment) {
 					rz_cons_printf("  0x%08" PFMT64x " %18s  %s ; %s\n",
@@ -1738,7 +1736,7 @@ static int emulateSyscallPrelude(RzCore *core, ut64 at, ut64 curpc) {
 			rz_io_read_at(core->io, curpc, arr, bsize);
 		}
 		inslen = rz_analysis_op(core->analysis, &aop, curpc, arr + i, bsize - i, RZ_ANALYSIS_OP_MASK_BASIC);
-		if (inslen) {
+		if (inslen > 0) {
 			int incr = (core->search->align > 0) ? core->search->align - 1 : inslen - 1;
 			if (incr < 0) {
 				incr = minopcode;
@@ -2036,7 +2034,7 @@ static bool do_analysis_search(RzCore *core, struct search_parameters *param, co
 			ut8 bufop[32];
 			rz_io_read_at(core->io, at, bufop, sizeof(bufop));
 			ret = rz_analysis_op(core->analysis, &aop, at, bufop, sizeof(bufop), RZ_ANALYSIS_OP_MASK_BASIC | RZ_ANALYSIS_OP_MASK_DISASM);
-			if (ret) {
+			if (ret > 0) {
 				bool match = false;
 				if (type == 'm') {
 					const char *fam = aop.mnemonic;
@@ -2168,7 +2166,7 @@ static void do_section_search(RzCore *core, struct search_parameters *param, con
 				begin = at;
 			}
 			rz_io_read_at(core->io, at, buf, buf_size);
-			double e = rz_hash_entropy(buf, buf_size);
+			double e = rz_hash_entropy(core->hash, buf, buf_size);
 			double diff = oe - e;
 			diff = RZ_ABS(diff);
 			end = at + buf_size;
@@ -2741,7 +2739,7 @@ static void incDigitBuffer(ut8 *buf, int bufsz) {
 
 static void search_collisions(RzCore *core, const char *hashName, const ut8 *hashValue, int hashLength, int mode) {
 	ut8 RZ_ALIGNED(8) cmphash[128];
-	const RzMsgDigestPlugin *crc32 = rz_msg_digest_plugin_by_name("crc32");
+	const RzHashPlugin *crc32 = rz_hash_plugin_by_name(core->hash, "crc32");
 	ut8 *digest = NULL;
 
 	int i = 0;
@@ -2817,7 +2815,7 @@ static void search_collisions(RzCore *core, const char *hashName, const ut8 *has
 		eprintf(" (%d h/s)  \r", mount);
 		if (!memcmp(hashValue, digest, hashLength)) {
 			eprintf("\nCOLLISION FOUND!\n");
-			rz_print_hexdump(core->print, core->offset, buf, bufsz, 0, 16, 0);
+			rz_core_print_hexdump(core, core->offset, buf, bufsz, 0, 16, 0);
 			rz_cons_flush();
 		}
 		RZ_FREE(digest);

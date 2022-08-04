@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #include <rz_analysis.h>
-#include <rz_msg_digest.h>
+#include <rz_hash.h>
 #include <ht_uu.h>
 #include <assert.h>
 
@@ -130,7 +130,7 @@ static bool block_list_cb(RzAnalysisBlock *block, void *user) {
 	return true;
 }
 
-RZ_API RzList *rz_analysis_get_blocks_in(RzAnalysis *analysis, ut64 addr) {
+RZ_API RzList /*<RzAnalysisBlock *>*/ *rz_analysis_get_blocks_in(RzAnalysis *analysis, ut64 addr) {
 	RzList *list = rz_list_newf((RzListFree)rz_analysis_block_unref);
 	if (list) {
 		rz_analysis_blocks_foreach_in(analysis, addr, block_list_cb, list);
@@ -162,7 +162,7 @@ RZ_API void rz_analysis_blocks_foreach_intersect(RzAnalysis *analysis, ut64 addr
 	all_intersect(unwrap(analysis->bb_tree), addr, size, cb, user);
 }
 
-RZ_API RzList *rz_analysis_get_blocks_intersect(RzAnalysis *analysis, ut64 addr, ut64 size) {
+RZ_API RzList /*<RzAnalysisBlock *>*/ *rz_analysis_get_blocks_intersect(RzAnalysis *analysis, ut64 addr, ut64 size) {
 	RzList *list = rz_list_newf((RzListFree)rz_analysis_block_unref);
 	if (!list) {
 		return NULL;
@@ -564,7 +564,7 @@ static bool recurse_list_cb(RzAnalysisBlock *block, void *user) {
 	return true;
 }
 
-RZ_API RzList *rz_analysis_block_recurse_list(RzAnalysisBlock *block) {
+RZ_API RzList /*<RzAnalysisBlock *>*/ *rz_analysis_block_recurse_list(RzAnalysisBlock *block) {
 	RzList *ret = rz_list_newf((RzListFree)rz_analysis_block_unref);
 	if (ret) {
 		rz_analysis_block_recurse(block, recurse_list_cb, ret);
@@ -690,7 +690,7 @@ RZ_API bool rz_analysis_block_was_modified(RzAnalysisBlock *block) {
 		free(buf);
 		return false;
 	}
-	ut32 cur_hash = rz_hash_xxhash(buf, block->size);
+	ut32 cur_hash = rz_hash_xxhash(block->analysis->hash, buf, block->size);
 	free(buf);
 	return block->bbhash != cur_hash;
 }
@@ -708,7 +708,7 @@ RZ_API void rz_analysis_block_update_hash(RzAnalysisBlock *block) {
 		free(buf);
 		return;
 	}
-	block->bbhash = rz_hash_xxhash(buf, block->size);
+	block->bbhash = rz_hash_xxhash(block->analysis->hash, buf, block->size);
 	free(buf);
 }
 
@@ -889,7 +889,7 @@ static bool automerge_get_predecessors_cb(void *user, const ut64 k, const void *
 
 // Try to find the contiguous predecessors of all given blocks and merge them if possible,
 // i.e. if there are no other blocks that have this block as one of their successors
-RZ_API void rz_analysis_block_automerge(RzList *blocks) {
+RZ_API void rz_analysis_block_automerge(RzList /*<RzAnalysisBlock *>*/ *blocks) {
 	rz_return_if_fail(blocks);
 	AutomergeCtx ctx = {
 		.predecessors = ht_up_new0(),

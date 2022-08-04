@@ -1,7 +1,11 @@
-core_plugins = [
-  'java',
-  'dex',
-]
+core_plugins = {
+  'conf_name': 'plugins_core',
+  'base_cname': 'rz_core_plugin_',
+  'list': [
+    'java',
+    'dex',
+  ],
+}
 
 subdir('cmd_descs')
 
@@ -33,6 +37,7 @@ rz_core_sources = [
   'cparser.c',
   'cpdb.c',
   'cplugin.c',
+  'cprint.c',
   'creg.c',
   'csign.c',
   'ctypes.c',
@@ -68,6 +73,7 @@ rz_core_sources = [
   'cmd/cmd_egg.c',
   'cmd/cmd_eval.c',
   'cmd/cmd_flag.c',
+  'cmd/cmd_flirt.c',
   'cmd/cmd_hash.c',
   #'cmd/cmd_help.c',
   'cmd/cmd_history.c',
@@ -92,14 +98,12 @@ rz_core_sources = [
   'cmd/cmd_type.c',
   'cmd/cmd_write.c',
   'cmd/cmd_yank.c',
-  'cmd/cmd_zign.c',
   'cmd/cmd_regs.c',
   'cmd/cmd_linux_heap_glibc.c',
   'cmd/cmd_windows_heap.c',
   'tui/visual.c',
   'tui/vmenus.c',
   'tui/vmenus_graph.c',
-  'tui/vmenus_zigns.c',
   'tui/vasm.c',
   'tui/panels.c'
 ]
@@ -152,12 +156,10 @@ endif
 
 rz_core = library('rz_core', rz_core_sources,
   include_directories: rz_core_inc,
-  c_args: library_cflags,
   dependencies: rz_core_deps,
   install: true,
   implicit_include_directories: false,
   install_rpath: rpath_lib,
-  link_args: library_linkflags,
   soversion: rizin_libversion,
   version: rizin_version,
   name_suffix: lib_name_suffix,

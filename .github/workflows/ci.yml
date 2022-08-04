@@ -157,16 +157,19 @@ jobs:
             allow_failure: false
 
     steps:
+      - name: Show available memory on Linux
+        if: matrix.os != 'macos-11' && matrix.enabled
+        run: free -h
       - uses: actions/checkout@v2
         if: matrix.enabled
         with:
           fetch-depth: 2
-      - name: Install pkg-config and cabextract with Homebrew
+      - name: Install pkg-config with Homebrew
         if: matrix.os == 'macos-11' && matrix.enabled
-        run: brew install pkg-config cabextract
+        run: brew install pkg-config
       - name: Install python and other dependencies
         if: (matrix.run_tests || matrix.build_system == 'meson') && matrix.os != 'macos-11' && matrix.enabled
-        run: sudo apt-get --assume-yes install python3-wheel python3-setuptools cabextract
+        run: sudo apt-get --assume-yes install python3-wheel python3-setuptools
       - name: Install meson and ninja
         if: matrix.build_system == 'meson' && matrix.enabled
         run: pip3 install --user meson ninja PyYAML
@@ -196,6 +199,9 @@ jobs:
           export PATH=${HOME}/Library/Python/3.8/bin:${HOME}/Library/Python/3.9/bin:${HOME}/.local/bin:${PATH}
           if [ "$ASAN" == "true" ]; then
             export CFLAGS="-DASAN=1 ${CFLAGS}"
+            if [ "$CC" == "clang" ]; then
+              export LD_LIBRARY_PATH=$(dirname $(clang -print-file-name=libclang_rt.asan-x86_64.so)):${LD_LIBRARY_PATH}
+            fi
           fi
           meson --prefix=${HOME} ${{ matrix.meson_options }} build && ninja -C build
         env:
@@ -210,12 +216,10 @@ jobs:
           export LD_LIBRARY_PATH=${HOME}/lib/$(uname -m)-linux-gnu:${HOME}/lib:${HOME}/lib64:${LD_LIBRARY_PATH}
           export PKG_CONFIG_PATH=${HOME}/lib/pkgconfig:${HOME}/lib/$(uname -m)-linux-gnu/pkgconfig:${PKG_CONFIG_PATH}
           ninja -C build install
-      - name: Disable user authentication for debugging (MacOS)
+      - name: Disable user authentication for debugging (macOS)
         if: matrix.os == 'macos-11' && matrix.enabled
         run: |
-          security authorizationdb read system.privilege.taskport > taskport.plist
-          /usr/libexec/PlistBuddy -c 'Set :authenticate-user false' ./taskport.plist
-          sudo security authorizationdb write system.privilege.taskport < taskport.plist
+          sudo security authorizationdb write system.privilege.taskport allow
       - name: Run unit tests (meson)
         continue-on-error: ${{ matrix.allow_failure }}
         if: matrix.build_system == 'meson' && matrix.enabled
@@ -412,7 +416,7 @@ jobs:
       - name: Install tools
         run: apt-get update && apt-get install --yes patch unzip git gcc-11 make curl pkg-config libc6-i386 build-essential
       - name: Install python and other dependencies
-        run: apt-get install --yes python3-wheel python3-setuptools python3-pip cabextract
+        run: apt-get install --yes python3-wheel python3-setuptools python3-pip
       - name: Install meson and ninja
         run: pip3 install meson ninja PyYAML
       - name: Checkout rizin
@@ -454,7 +458,7 @@ jobs:
       options: --cap-add=SYS_PTRACE --security-opt seccomp=unconfined --security-opt apparmor=unconfined
     steps:
       - name: Install dependencies
-        run: apk add --no-cache git gcc g++ linux-headers cmake curl wget unzip py3-wheel py3-setuptools py3-pip meson ninja xz cabextract
+        run: apk add --no-cache git gcc g++ linux-headers cmake curl wget unzip py3-wheel py3-setuptools py3-pip meson ninja xz
       - name: Checkout rizin
         run: |
           git clone https://github.com/${{ github.repository }}
@@ -467,7 +471,7 @@ jobs:
       - name: Compile with meson
         run: |
           mkdir -p ${HOME}/rizin-static
-          meson --prefix=${HOME}/rizin-static --buildtype release --default-library static -Dstatic_runtime=true -Dportable=true build
+          meson --prefix=${HOME}/rizin-static --buildtype release --default-library static -Dinstall_sigdb=true -Dstatic_runtime=true -Dportable=true build
           ninja -C build && ninja -C build install
           tar -C ${HOME}/rizin-static --xz -cf rizin-static.tar.xz $(ls ${HOME}/rizin-static)
         working-directory: rizin
@@ -940,6 +944,15 @@ jobs:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./rizin-vs2019_static-${{ steps.extract_version.outputs.branch }}.zip/rizin-vs2019_static-${{ steps.extract_version.outputs.branch }}.zip
           asset_name: rizin-windows-static-${{ steps.extract_version.outputs.branch }}.zip
+          asset_content_type: application/zip
+      - name: Upload rizin windows dynamic archive
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./rizin-clang_cl-${{ steps.extract_version.outputs.branch }}.zip/rizin-clang_cl-${{ steps.extract_version.outputs.branch }}.zip
+          asset_name: rizin-windows-shared64-${{ steps.extract_version.outputs.branch }}.zip
           asset_content_type: application/zip
       - name: Upload rizin windows installer (x64)
         uses: actions/upload-release-asset@v1

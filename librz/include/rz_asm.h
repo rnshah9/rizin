@@ -5,6 +5,7 @@
 #ifndef RZ_ASM_H
 #define RZ_ASM_H
 
+#include <rz_util/rz_print.h>
 #include <rz_types.h>
 #include <rz_bin.h> // only for binding, no hard dep required
 #include <rz_util.h>
@@ -70,6 +71,7 @@ typedef struct rz_asm_op_t {
 	RzStrBuf buf;
 	RzStrBuf buf_asm;
 	RzBuffer *buf_inc; // must die
+	RzAsmTokenString *asm_toks; ///< Tokenized asm string.
 } RzAsmOp;
 
 typedef struct rz_asm_code_t {
@@ -116,6 +118,7 @@ typedef struct rz_asm_t {
 	int pcalign;
 	int dataalign;
 	int bitshift;
+	bool immsign; // Print signed immediates as negative values, not their unsigned representation.
 	bool immdisp; // Display immediates with # symbol (for arm architectures). false = show hashs
 	bool utf8; // Flag for plugins: Use utf-8 characters.
 	HtPP *flags;
@@ -155,8 +158,8 @@ RZ_API bool rz_asm_is_valid(RzAsm *a, const char *name);
 RZ_API bool rz_asm_use(RzAsm *a, const char *name);
 RZ_API bool rz_asm_use_assembler(RzAsm *a, const char *name);
 RZ_API bool rz_asm_set_arch(RzAsm *a, const char *name, int bits);
-RZ_API int rz_asm_set_bits(RzAsm *a, int bits);
-RZ_API void rz_asm_set_cpu(RzAsm *a, const char *cpu);
+RZ_DEPRECATE RZ_API int rz_asm_set_bits(RzAsm *a, int bits);
+RZ_DEPRECATE RZ_API void rz_asm_set_cpu(RzAsm *a, const char *cpu);
 RZ_API bool rz_asm_set_big_endian(RzAsm *a, bool big_endian);
 RZ_API bool rz_asm_set_syntax(RzAsm *a, int syntax);
 RZ_API int rz_asm_syntax_from_string(const char *name);
@@ -198,6 +201,16 @@ RZ_API int rz_asm_op_set_hexbuf(RzAsmOp *op, const ut8 *buf, int len);
 RZ_API void rz_asm_op_set_buf(RzAsmOp *op, const ut8 *str, int len);
 RZ_API ut8 *rz_asm_op_get_buf(RzAsmOp *op);
 
+// String tokenizing
+RZ_API RZ_OWN RzAsmTokenString *rz_asm_token_string_new(const char *asm_str);
+RZ_API void rz_asm_token_string_free(RZ_OWN RzAsmTokenString *toks);
+RZ_API RZ_OWN RzAsmTokenString *rz_asm_token_string_clone(RZ_OWN RZ_NONNULL RzAsmTokenString *toks);
+RZ_API void rz_asm_token_pattern_free(void *p);
+RZ_API RZ_OWN RzAsmTokenString *rz_asm_tokenize_asm_regex(RZ_BORROW RzStrBuf *asm_str, RzPVector /*<RzAsmTokenPattern *>*/ *patterns);
+RZ_API RZ_OWN RzAsmParseParam *rz_asm_get_parse_param(RZ_NULLABLE const RzReg *reg, ut32 ana_op_type);
+RZ_DEPRECATE RZ_API RZ_OWN RzAsmTokenString *rz_asm_tokenize_asm_string(RZ_BORROW RzStrBuf *asm_str, RZ_NULLABLE const RzAsmParseParam *param);
+RZ_DEPRECATE RZ_API RZ_OWN RzStrBuf *rz_asm_colorize_asm_str(RZ_BORROW RzStrBuf *asm_str, RZ_BORROW RzPrint *p, RZ_NULLABLE const RzAsmParseParam *param, RZ_NULLABLE const RzAsmTokenString *toks);
+
 /* plugin pointers */
 extern RzAsmPlugin rz_asm_plugin_6502;
 extern RzAsmPlugin rz_asm_plugin_8051;
@@ -209,6 +222,7 @@ extern RzAsmPlugin rz_asm_plugin_avr;
 extern RzAsmPlugin rz_asm_plugin_bf;
 extern RzAsmPlugin rz_asm_plugin_null;
 extern RzAsmPlugin rz_asm_plugin_chip8;
+extern RzAsmPlugin rz_asm_plugin_cil;
 extern RzAsmPlugin rz_asm_plugin_cr16;
 extern RzAsmPlugin rz_asm_plugin_cris_gnu;
 extern RzAsmPlugin rz_asm_plugin_dalvik;

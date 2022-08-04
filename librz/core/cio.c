@@ -324,7 +324,7 @@ err:
  * \param instructions List of instructions to assemble as a string
  * \return Returns the length of the written data or -1 in case of error
  */
-RZ_API int rz_core_write_assembly(RzCore *core, ut64 addr, const char *instructions) {
+RZ_API int rz_core_write_assembly(RzCore *core, ut64 addr, RZ_NONNULL const char *instructions) {
 	rz_return_val_if_fail(core && instructions, -1);
 
 	int ret = -1;
@@ -362,7 +362,7 @@ err:
  * \param instructions List of instructions to assemble as a string
  * \return Returns the length of the written data or -1 in case of error (e.g. the new instruction does not fit)
  */
-RZ_API int rz_core_write_assembly_fill(RzCore *core, ut64 addr, const char *instructions) {
+RZ_API int rz_core_write_assembly_fill(RzCore *core, ut64 addr, RZ_NONNULL const char *instructions) {
 	rz_return_val_if_fail(core && instructions, -1);
 
 	int ret = -1;
@@ -378,7 +378,7 @@ RZ_API int rz_core_write_assembly_fill(RzCore *core, ut64 addr, const char *inst
 	}
 
 	RzAnalysisOp op = { 0 };
-	if (!rz_analysis_op(core->analysis, &op, core->offset, core->block, core->blocksize, RZ_ANALYSIS_OP_MASK_BASIC)) {
+	if (rz_analysis_op(core->analysis, &op, core->offset, core->block, core->blocksize, RZ_ANALYSIS_OP_MASK_BASIC) < 1) {
 		RZ_LOG_ERROR("Invalid instruction at %" PFMT64x "\n", core->offset);
 		goto err;
 	}
@@ -602,7 +602,7 @@ RZ_API bool rz_core_write_value_inc_at(RzCore *core, ut64 addr, st64 value, int 
  * \param addr Address where to write the string
  * \param s String to write. The string is unescaped, meaning that if there is `\n` it becomes 0x0a
  */
-RZ_API bool rz_core_write_string_at(RzCore *core, ut64 addr, const char *s) {
+RZ_API bool rz_core_write_string_at(RzCore *core, ut64 addr, RZ_NONNULL const char *s) {
 	rz_return_val_if_fail(core && s, false);
 
 	char *str = strdup(s);
@@ -697,7 +697,7 @@ RZ_API bool rz_core_write_length_string_at(RzCore *core, ut64 addr, const char *
  * \param addr Address where to write the string
  * \param s String to encode as base64 and then written.
  */
-RZ_API bool rz_core_write_base64_at(RzCore *core, ut64 addr, const char *s) {
+RZ_API bool rz_core_write_base64_at(RzCore *core, ut64 addr, RZ_NONNULL const char *s) {
 	rz_return_val_if_fail(core && s, false);
 
 	bool res = false;
@@ -742,7 +742,7 @@ err:
  * \param addr Address where to write the string
  * \param s String to decode from base64 and then written
  */
-RZ_API bool rz_core_write_base64d_at(RzCore *core, ut64 addr, const char *s) {
+RZ_API bool rz_core_write_base64d_at(RzCore *core, ut64 addr, RZ_NONNULL const char *s) {
 	rz_return_val_if_fail(core && s, false);
 
 	bool res = false;
@@ -1092,4 +1092,38 @@ RZ_API bool rz_core_write_seq_at(RzCore *core, ut64 addr, ut64 from, ut64 to, ut
 
 	free(buf);
 	return true;
+}
+
+/**
+ * \brief Copy \p len bytes from \p from to \p addr
+ *
+ * \param core Reference to RzCore instance
+ * \param addr Where the data should be copied to
+ * \param from Where the data should be read from
+ * \param len Number of bytes to copy, expected to not be negative
+ * \return true if the write operation succeeds, false otherwise
+ */
+RZ_API bool rz_core_write_duplicate_at(RzCore *core, ut64 addr, ut64 from, int len) {
+	rz_return_val_if_fail(core, false);
+	rz_return_val_if_fail(len >= 0, false);
+
+	bool res = false;
+	ut8 *data = RZ_NEWS(ut8, len);
+	if (!data) {
+		return false;
+	}
+
+	int n = rz_io_nread_at(core->io, from, data, len);
+	if (n < 0) {
+		RZ_LOG_ERROR("Cannot read data from %" PFMT64x ".\n", from);
+		goto err;
+	}
+	if (!rz_core_write_at(core, addr, data, n)) {
+		RZ_LOG_ERROR("Cannot write %d bytes to %" PFMT64x ".\n", n, addr);
+		goto err;
+	}
+	res = true;
+err:
+	free(data);
+	return res;
 }

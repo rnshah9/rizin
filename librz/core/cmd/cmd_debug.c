@@ -535,7 +535,7 @@ static bool step_until_optype(RzCore *core, RzList *optypes_list) {
 		}
 		rz_io_read_at(core->io, pc, buf, sizeof(buf));
 
-		if (!rz_analysis_op(core->dbg->analysis, &op, pc, buf, sizeof(buf), RZ_ANALYSIS_OP_MASK_BASIC)) {
+		if (rz_analysis_op(core->dbg->analysis, &op, pc, buf, sizeof(buf), RZ_ANALYSIS_OP_MASK_BASIC) < 1) {
 			RZ_LOG_ERROR("rz_analysis_op failed\n");
 			res = false;
 			goto cleanup_after_push;
@@ -1021,7 +1021,7 @@ static bool get_bin_info(RzCore *core, const char *file, ut64 baseaddr, PJ *pj,
 RZ_IPI RzCmdStatus rz_cmd_debug_list_maps_handler(RzCore *core, int argc, const char **argv, RzCmdStateOutput *state) {
 	CMD_CHECK_DEBUG_DEAD(core);
 	rz_debug_map_sync(core->dbg); // update process memory maps
-	rz_debug_map_print(core->dbg, core->offset, state);
+	rz_core_debug_map_print(core, core->offset, state);
 	return RZ_CMD_STATUS_OK;
 }
 
@@ -1081,7 +1081,7 @@ RZ_IPI RzCmdStatus rz_cmd_debug_map_current_handler(RzCore *core, int argc, cons
 	// RZ_OUTPUT_MODE_LONG is workaround for '.'
 	RzCmdStateOutput state = { 0 };
 	rz_cmd_state_output_init(&state, RZ_OUTPUT_MODE_LONG);
-	rz_debug_map_print(core->dbg, addr, &state);
+	rz_core_debug_map_print(core, addr, &state);
 	rz_cmd_state_output_print(&state);
 	rz_cmd_state_output_fini(&state);
 	rz_cons_flush();
@@ -3241,16 +3241,11 @@ RZ_IPI RzCmdStatus rz_cmd_debug_continue_execution_handler(RzCore *core, int arg
 		int old_pid = core->dbg->pid;
 		// using rz_num instead of atoi
 		int pid = rz_num_math(core->num, argv[1]);
-		rz_reg_arena_swap(core->dbg->reg, true);
 		rz_debug_select(core->dbg, pid, core->dbg->tid);
-		rz_debug_continue(core->dbg);
+		rz_core_debug_continue(core);
 		rz_debug_select(core->dbg, old_pid, core->dbg->tid);
 	} else {
-		rz_reg_arena_swap(core->dbg->reg, true);
-#if __linux__
-		core->dbg->continue_all_threads = true;
-#endif
-		rz_debug_continue(core->dbg);
+		rz_core_debug_continue(core);
 	}
 
 	rz_cons_break_pop();
@@ -3302,14 +3297,8 @@ RZ_IPI RzCmdStatus rz_cmd_debug_continue_unknown_call_handler(RzCore *core, int 
 RZ_IPI RzCmdStatus rz_cmd_debug_continue_exception_handler(RzCore *core, int argc, const char **argv) {
 	CMD_CHECK_DEBUG_DEAD(core);
 	rz_cons_break_push(rz_core_static_debug_stop, core->dbg);
-
-#if __WINDOWS__
 	rz_reg_arena_swap(core->dbg->reg, true);
 	rz_debug_continue_pass_exception(core->dbg);
-#else
-	eprintf("dce not available on this platform\n");
-#endif
-
 	rz_cons_break_pop();
 	rz_core_dbg_follow_seek_register(core);
 	return RZ_CMD_STATUS_OK;

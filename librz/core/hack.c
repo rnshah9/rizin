@@ -8,7 +8,7 @@
  * have several modes/alignment requirements.
  */
 
-void rz_core_hack_help(const RzCore *core) {
+RZ_API void rz_core_hack_help(const RzCore *core) {
 	const char *help_msg[] = {
 		"wao", " [op]", "performs a modification on current opcode",
 		"wao", " nop", "nop current opcode",
@@ -302,7 +302,7 @@ RZ_API bool rz_core_hack(RzCore *core, const char *op) {
 	}
 	if (hack) {
 		RzAnalysisOp analop;
-		if (!rz_analysis_op(core->analysis, &analop, core->offset, core->block, core->blocksize, RZ_ANALYSIS_OP_MASK_BASIC)) {
+		if (rz_analysis_op(core->analysis, &analop, core->offset, core->block, core->blocksize, RZ_ANALYSIS_OP_MASK_BASIC) < 1) {
 			eprintf("analysis op fail\n");
 			return false;
 		}

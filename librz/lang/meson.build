@@ -1,34 +1,40 @@
-lang_plugins = [
+lang_plugins_list = [
   'lib',
   'pipe',
-  'rust',
-  'vala'
 ]
-
 if host_machine.system() != 'windows'
-  lang_plugins += [
+  lang_plugins_list += [
     'c',
     'cpipe'
   ]
 endif
 
+lang_plugins = {
+  'conf_name': 'plugins_lang',
+  'base_cname': 'rz_lang_plugin_',
+  'list': lang_plugins_list,
+}
+
 rz_lang_sources = [
   'lang.c',
-  # included in lang.c
-  #'p/c.c',
-  #'p/cpipe.c',
-  #'p/lib.c',
-  #'p/pipe.c',
+  'p/lib.c',
+  'p/pipe.c',
+  'p/pipe_helper.c',
 ]
+
+if host_machine.system() != 'windows'
+  rz_lang_sources += [
+    'p/c.c',
+    'p/cpipe.c',
+  ]
+endif
 
 rz_lang = library('rz_lang', rz_lang_sources,
   include_directories: platform_inc,
-  c_args: library_cflags,
   dependencies: [rz_util_dep, rz_cons_dep],
   install: true,
   implicit_include_directories: false,
   install_rpath: rpath_lib,
-  link_args: library_linkflags,
   soversion: rizin_libversion,
   version: rizin_version,
   name_suffix: lib_name_suffix,

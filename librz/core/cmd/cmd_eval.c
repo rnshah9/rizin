@@ -110,8 +110,20 @@ static bool dict2keylist(void *user, const void *key, const ut64 value) {
 	return true;
 }
 
-RZ_API RZ_OWN RzList *rz_core_theme_list(RzCore *core) {
+/**
+ * \brief      Returns the list of the rizin themes.
+ *
+ * \param      core  The RzCore struct to use
+ * \return     On success, an RzList pointer, otherwise NULL.
+ */
+RZ_API RZ_OWN RzList /*<char *>*/ *rz_core_theme_list(RZ_NONNULL RzCore *core) {
+	rz_return_val_if_fail(core, NULL);
+
 	HtPU *themes = ht_pu_new0();
+	if (!themes) {
+		return NULL;
+	}
+
 	char *path = rz_path_home_prefix(RZ_THEMES);
 	if (path) {
 		list_themes_in_path(themes, path);
@@ -133,7 +145,7 @@ RZ_API RZ_OWN RzList *rz_core_theme_list(RzCore *core) {
 	return list;
 }
 
-RZ_IPI void rz_core_theme_nextpal(RzCore *core, RzConsPalSeekMode mode) {
+RZ_API void rz_core_theme_nextpal(RzCore *core, RzConsPalSeekMode mode) {
 	RzListIter *iter;
 	const char *fn;
 	RzList *files = rz_core_theme_list(core);
@@ -409,35 +421,17 @@ RZ_IPI RzCmdStatus rz_eval_readonly_handler(RzCore *core, int argc, const char *
 }
 
 RZ_IPI RzCmdStatus rz_eval_spaces_handler(RzCore *core, int argc, const char **argv) {
-	const char *arg = argc > 1 ? argv[1] : "";
-	RzConfigNode *node;
-	RzListIter *iter;
-	char *oldSpace = NULL;
-	rz_list_foreach (core->config->nodes, iter, node) {
-		char *space = strdup(node->name);
-		char *dot = strchr(space, '.');
-		if (dot) {
-			*dot = 0;
-		}
-		if (arg && *arg) {
-			if (!strcmp(arg, space)) {
-				rz_cons_println(dot + 1);
-			}
-			free(space);
-			continue;
-		} else if (oldSpace) {
-			if (!strcmp(space, oldSpace)) {
-				free(space);
-				continue;
-			}
-			free(oldSpace);
-			oldSpace = space;
-		} else {
-			oldSpace = space;
-		}
-		rz_cons_println(space);
+	const char *arg = argc > 1 ? argv[1] : NULL;
+	RzList *list = rz_core_config_in_space(core, arg);
+	if (!list) {
+		return RZ_CMD_STATUS_ERROR;
 	}
-	free(oldSpace);
+	RzListIter *iter;
+	char *name;
+	rz_list_foreach (list, iter, name) {
+		rz_cons_println(name);
+	}
+	rz_list_free(list);
 	return RZ_CMD_STATUS_OK;
 }
 

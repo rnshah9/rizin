@@ -51,7 +51,7 @@ typedef struct rz_test_state_t {
 	RzPVector results;
 } RzTestState;
 
-static RzThreadFunctionRet worker_th(RzThread *th);
+static void *worker_th(RzTestState *state);
 static void print_state(RzTestState *state, ut64 prev_completed);
 static void print_log(RzTestState *state, ut64 prev_completed, ut64 prev_paths_completed);
 static void interact(RzTestState *state);
@@ -72,13 +72,15 @@ static int help(bool verbose) {
 			" -L           log mode (better printing for CI, logfiles, etc.)\n"
 			" -F [dir]     run fuzz tests (open and default analysis) on all files in the given dir\n"
 			" -j [threads] how many threads to use for running tests concurrently (default is " WORKERS_DEFAULT_STR ")\n"
-			" -r [rizin] path to rizin executable (default is " RIZIN_CMD_DEFAULT ")\n"
-			" -m [rz-asm]   path to rz-asm executable (default is " RZ_ASM_CMD_DEFAULT ")\n"
+			" -r [rizin]   path to rizin executable (default is " RIZIN_CMD_DEFAULT ")\n"
+			" -m [rz-asm]  path to rz-asm executable (default is " RZ_ASM_CMD_DEFAULT ")\n"
 			" -f [file]    file to use for json tests (default is " JSON_TEST_FILE_DEFAULT ")\n"
 			" -C [dir]     chdir before running rz-test (default follows executable symlink + test/new\n"
 			" -t [seconds] timeout per test (default is " TIMEOUT_DEFAULT_STR ")\n"
 			" -o [file]    output test run information in JSON format to file\n"
-			" -e [dir]     exclude a particular directory while testing (this option can appear many times)"
+			" -e [dir]     exclude a particular directory while testing (this option can appear many times)\n"
+			" -s [num]     number of expected successful tests\n"
+			" -x [num]     number of expected failed tests"
 			"\n"
 			"Supported test types: @json @unit @fuzz @cmds\n"
 			"OS/Arch for archos tests: " RZ_TEST_ARCH_OS "\n");
@@ -196,6 +198,8 @@ int rz_test_main(int argc, const char **argv) {
 	RzPVector *except_dir = rz_pvector_new(free);
 	const char *rz_test_dir = NULL;
 	ut64 timeout_sec = TIMEOUT_DEFAULT;
+	st64 expect_succ = -1;
+	st64 expect_fail = -1;
 	int ret = 0;
 
 	if (!except_dir) {
@@ -219,7 +223,7 @@ int rz_test_main(int argc, const char **argv) {
 #endif
 
 	RzGetopt opt;
-	rz_getopt_init(&opt, argc, (const char **)argv, "hqvj:r:m:f:C:LnVt:F:io:e:");
+	rz_getopt_init(&opt, argc, (const char **)argv, "hqvj:r:m:f:C:LnVt:F:io:e:s:x:");
 
 	int c;
 	while ((c = rz_getopt_next(&opt)) != -1) {
@@ -292,6 +296,21 @@ int rz_test_main(int argc, const char **argv) {
 		case 'e':
 			rz_pvector_push(except_dir, strdup(opt.arg));
 			break;
+		case 's':
+			// rz_num_math returns 0 for both '0' and invalid str
+			expect_succ = rz_num_math(NULL, opt.arg);
+			if (!rz_num_is_valid_input(NULL, opt.arg) || expect_succ < 0) {
+				RZ_LOG_ERROR("Number of expected successful tests is invalid\n");
+				goto beach;
+			}
+			break;
+		case 'x':
+			expect_fail = rz_num_math(NULL, opt.arg);
+			if (!rz_num_is_valid_input(NULL, opt.arg) || expect_fail < 0) {
+				RZ_LOG_ERROR("Number of expected failed tests is invalid\n");
+				goto beach;
+			}
+			break;
 		default:
 			ret = help(false);
 			goto beach;
@@ -332,8 +351,15 @@ int rz_test_main(int argc, const char **argv) {
 	rz_sys_setenv("TZ", "UTC");
 	ut64 time_start = rz_time_now_mono();
 	RzTestState state = { 0 };
-	state.run_config.rz_cmd = rizin_cmd ? rizin_cmd : RIZIN_CMD_DEFAULT;
-	state.run_config.rz_asm_cmd = rz_asm_cmd ? rz_asm_cmd : RZ_ASM_CMD_DEFAULT;
+	// Avoid PATH search for each process launched
+	if (!rizin_cmd) {
+		rizin_cmd = rz_file_path(RIZIN_CMD_DEFAULT);
+	}
+	if (!rz_asm_cmd) {
+		rz_asm_cmd = rz_file_path(RZ_ASM_CMD_DEFAULT);
+	}
+	state.run_config.rz_cmd = rizin_cmd;
+	state.run_config.rz_asm_cmd = rz_asm_cmd;
 	state.run_config.json_test_file = json_test_file ? json_test_file : JSON_TEST_FILE_DEFAULT;
 	state.run_config.timeout_ms = timeout_sec > UT64_MAX / 1000 ? UT64_MAX : timeout_sec * 1000;
 	state.verbose = verbose;
@@ -464,7 +490,11 @@ int rz_test_main(int argc, const char **argv) {
 		}
 	}
 
-	rz_pvector_insert_range(&state.queue, 0, state.db->tests.v.a, rz_pvector_len(&state.db->tests));
+	if (rz_pvector_len(&state.db->tests) != 0) {
+		rz_pvector_insert_range(&state.queue, 0, state.db->tests.v.a, rz_pvector_len(&state.db->tests));
+	} else {
+		eprintf("No tests discovered\n");
+	}
 
 	if (log_mode) {
 		// Log mode prints the state after every completed file.
@@ -490,7 +520,7 @@ int rz_test_main(int argc, const char **argv) {
 	rz_pvector_init(&workers, NULL);
 	int i;
 	for (i = 0; i < workers_count; i++) {
-		RzThread *th = rz_th_new(worker_th, &state, 0);
+		RzThread *th = rz_th_new((RzThreadFunction)worker_th, &state);
 		if (!th) {
 			eprintf("Failed to start thread.\n");
 			rz_th_lock_leave(state.lock);
@@ -548,7 +578,15 @@ int rz_test_main(int argc, const char **argv) {
 		interact(&state);
 	}
 
-	if (state.xx_count) {
+	if (expect_succ > 0 && expect_succ != state.ok_count) {
+		ret = 1;
+	}
+
+	if (expect_fail > 0 && expect_fail != state.xx_count) {
+		ret = 1;
+	}
+
+	if (expect_fail < 0 && expect_succ < 0 && state.xx_count) {
 		ret = 1;
 	}
 
@@ -623,8 +661,7 @@ static void test_result_to_json(PJ *pj, RzTestResultInfo *result) {
 	pj_end(pj);
 }
 
-static RzThreadFunctionRet worker_th(RzThread *th) {
-	RzTestState *state = rz_th_get_user(th);
+static void *worker_th(RzTestState *state) {
 	rz_th_lock_enter(state->lock);
 	while (true) {
 		if (rz_pvector_empty(&state->queue)) {
@@ -679,7 +716,7 @@ static RzThreadFunctionRet worker_th(RzThread *th) {
 		rz_th_cond_signal(state->cond);
 	}
 	rz_th_lock_leave(state->lock);
-	return RZ_TH_STOP;
+	return NULL;
 }
 
 static void print_diff(const char *actual, const char *expected, const char *regexp) {
