@@ -64,7 +64,7 @@ RUN apt-get install -y --no-install-recommends \
 	${with_arm32_as:+binutils-arm-linux-gnueabi} \
 	${with_ppc_as:+binutils-powerpc64le-linux-gnu}
 
-RUN pip3 install meson ninja
+RUN pip3 install -I 'meson==0.61.5' 'ninja==1.10.2.4'
 
 WORKDIR /tmp
 RUN git clone -b "$RZ_PIPE_PY_VERSION" https://github.com/rizinorg/rz-pipe
