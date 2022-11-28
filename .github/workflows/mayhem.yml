@@ -51,7 +51,8 @@ jobs:
       fail-fast: false
       matrix:
         mayhemfile:
-          - mayhem/Mayhemfile
+          - mayhem/Mayhemfile_rizing
+          - mayhem/Mayhemfile_rz_asm_token_string_new
 
     steps:
       - uses: actions/checkout@v2

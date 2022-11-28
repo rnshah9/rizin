@@ -1,0 +1,7 @@
+project: rizin
+target: rz-asm-token-string-new
+
+cmds:
+  - cmd: /fuzz_rz_asm_token_string_new
+    env:
+      ASAN_OPTIONS: detect_leaks=0

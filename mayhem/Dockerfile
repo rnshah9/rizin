@@ -74,6 +74,10 @@ WORKDIR /tmp/rizin
 RUN meson --prefix=/usr /tmp/build
 RUN meson compile -C /tmp/build
 RUN meson install --destdir /tmp/rizin-install -C /tmp/build
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y clang
+ENV PKG_CONFIG_PATH=/tmp/rizin-install/usr/lib/pkgconfig/
+ENV LD_LIBRARY_PATH=/tmp/rizin-install/usr/lib/
+RUN clang++ /tmp/rizin/mayhem/fuzz_rz_asm_token_string_new.cpp -fsanitize=fuzzer,address -I /tmp/rizin-install/usr/include/librz/ -I /tmp/rizin-install/usr/include/librz/sdb/ -L /tmp/rizin-install/usr/lib/ $(pkg-config --libs rz_asm) -o /fuzz
 
 FROM debian:10
 ENV RZ_ARM64_AS=${with_arm64_as:+aarch64-linux-gnu-as}
@@ -86,5 +90,6 @@ WORKDIR /home/rizin
 ENV HOME /home/rizin
 
 COPY --from=0 /tmp/rizin-install/ /
+COPY --from=0 /fuzz /fuzz_rz_asm_token_string_new
 
 RUN rz-pm init && rz-pm update
