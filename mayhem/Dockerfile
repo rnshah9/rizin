@@ -62,7 +62,8 @@ RUN apt-get install -y --no-install-recommends \
 	python3-wheel \
 	${with_arm64_as:+binutils-aarch64-linux-gnu} \
 	${with_arm32_as:+binutils-arm-linux-gnueabi} \
-	${with_ppc_as:+binutils-powerpc64le-linux-gnu}
+	${with_ppc_as:+binutils-powerpc64le-linux-gnu} \
+	clang-13
 
 RUN pip3 install -I 'meson==0.61.5' 'ninja==1.10.2.4'
 
@@ -74,10 +75,9 @@ WORKDIR /tmp/rizin
 RUN meson --prefix=/usr /tmp/build
 RUN meson compile -C /tmp/build
 RUN meson install --destdir /tmp/rizin-install -C /tmp/build
-RUN DEBIAN_FRONTEND=noninteractive apt-get install -y clang
 ENV PKG_CONFIG_PATH=/tmp/rizin-install/usr/lib/pkgconfig/
 ENV LD_LIBRARY_PATH=/tmp/rizin-install/usr/lib/
-RUN clang++ /tmp/rizin/mayhem/fuzz_rz_asm_token_string_new.cpp -fsanitize=fuzzer,address -I /tmp/rizin-install/usr/include/librz/ -I /tmp/rizin-install/usr/include/librz/sdb/ -L /tmp/rizin-install/usr/lib/ $(pkg-config --libs rz_asm) -o /fuzz
+RUN clang++-13 /tmp/rizin/mayhem/fuzz_rz_asm_token_string_new.cpp -fsanitize=fuzzer,address -I /tmp/rizin-install/usr/include/librz/ -I /tmp/rizin-install/usr/include/librz/sdb/ -L /tmp/rizin-install/usr/lib/ $(pkg-config --libs rz_asm) -o /fuzz
 
 FROM debian:10
 ENV RZ_ARM64_AS=${with_arm64_as:+aarch64-linux-gnu-as}
